@@ -1,0 +1,55 @@
+[package]
+name = "burmalda57"
+version = "1.0.1"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+# cdylib — .so для Android
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = "z"        
+lto = true              
+codegen-units = 1         
+panic = "abort"           
+strip = true              
+
+[dependencies]
+# Сеть
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip", "rustls-tls-webpki-roots"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+sentry = { version = "0.48.4", default-features = false, features = [
+    "backtrace", "contexts", "panic", "ureq", "rustls"
+] }
+semver = "1"
+# Криптография (сессия)
+aes = "0.8"
+aes-gcm = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.21"
+
+# Android / JNI / логи
+android_logger = "0.13"
+log = "0.4"
+jni = "0.21"
+ndk-context = "0.1"
+
+# UI
+slint = { version = "1.8", default-features = false, features = [
+    "compat-1-2",
+    "renderer-femtovg",
+    "backend-android-activity-06",
+] }
+jni-sys = "0.4.1"
+
+[build-dependencies]
+slint-build = "1.8"
+
+# [target.'cfg(target_os = "android")'.dependencies]
+# android-activity = { version = "0.6", features = ["game-activity"] }

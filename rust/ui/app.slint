@@ -1,0 +1,2869 @@
+import { Spinner } from "std-widgets.slint";
+
+// Проверка времени (реализация в Rust). invalid(s) == true — формат/диапазон неверный.
+// Пустая строка считается корректной. Если Rust не подключит колбэк, по умолчанию false (валидация отключена).
+export global Validate {
+    pure callback invalid(string) -> bool;
+}
+
+export struct Lesson {
+    number: int,
+    time: string,
+    subject: string,
+    room: string,
+    homework: string,
+    topic: string,
+    teacher: string,
+    mark: string,
+    mark-value: int,
+    absence: string,
+    grade-type: string,
+    is-event: bool,
+    event-id: string,
+    hw-done: bool,
+    hw-key: string,
+}
+// Недавняя оценка (из последних дней) — с датой выставления
+export struct RecentGrade {
+    subject: string,
+    mark: string,
+    mark-val: int,
+    date: string,
+}
+
+// Одна оценка в ленте предмета
+export struct GradeMark {
+    value: int,
+    date: string,   // короткая дата "06.04"
+}
+// Предмет со средним баллом и списком оценок за период
+export struct SubjectGrades {
+    subject: string,
+    average: string,     // отформатированное "4.64" или "—"
+    average-val: float,  // число — для цвета бейджа
+    marks: [GradeMark],
+}
+
+// Итоговая оценка за период (четверть / год)
+export struct FinalMark {
+    label: string,       // "1", "2", "3", "4", "Год"
+    average: string,     // "4.64" или "—"
+    average-val: float,
+}
+// Предмет с итоговыми оценками по всем периодам
+export struct SubjectFinals {
+    subject: string,
+    marks: [FinalMark],
+}
+
+// --- График успеваемости за год ---
+// Точка графика: относительные координаты 0..1 внутри области рисования.
+export struct ChartPoint {
+    px: float,     // 0..1 по горизонтали (позиция во времени)
+    py: float,     // 0..1 по вертикали (0 = верх/оценка 5, 1 = низ/оценка 2)
+    value: int,    // сама оценка (для цвета точки)
+}
+// Вертикальный пунктир — граница четверти.
+export struct ChartDivider {
+    px: float,     // 0..1 по горизонтали
+    label: string, // подпись четверти справа от линии ("2 чт")
+}
+// Полные данные графика по предмету.
+export struct SubjectChart {
+    subject: string,
+    points: [ChartPoint],
+    dividers: [ChartDivider],
+    has-data: bool,
+}
+// Ломаная линия графика в viewbox-координатах 0..1000 (готовая SVG-строка).
+
+// ============================================================
+//  Material 3 — цветовые роли (tonal surfaces + accent)
+// ============================================================
+export global Theme {
+    // ================================================================
+    //  БАЗОВЫЕ РОЛИ — задаются из Rust (Material You). Если система их
+    //  не отдаёт (API<31), работают дефолты по признаку dark.
+    // ================================================================
+    in-out property <bool> dark: false;
+
+    // Accent 1 (primary)
+    in-out property <color> primary:              dark ? #D0BCFF : #6750A4;
+    in-out property <color> on-primary:           dark ? #381E72 : #FFFFFF;
+    in-out property <color> primary-container:    dark ? #4F378B : #EADDFF;
+    in-out property <color> on-primary-container: dark ? #EADDFF : #21005D;
+
+    // Accent 2 (secondary — tonal-бейджи, навбар-таблетка)
+    in-out property <color> secondary-container:    dark ? #4A4458 : #E8DEF8;
+    in-out property <color> on-secondary-container: dark ? #E8DEF8 : #1D192B;
+
+    // Нейтрали (neutral1/neutral2)
+    in-out property <color> surface:            dark ? #141218 : #FEF7FF;
+    in-out property <color> on-surface:         dark ? #E6E1E5 : #1D1B20;
+    in-out property <color> on-surface-variant: dark ? #CAC4D0 : #49454F;
+    in-out property <color> outline:            dark ? #938F99 : #79747E;
+
+    // ================================================================
+    //  ПРОИЗВОДНЫЕ — считаются из базовых, поэтому следуют за Material You.
+    //  Лестница elevation: сдвигаем surface в сторону on-surface.
+    // ================================================================
+    out property <color> background:                surface;
+    out property <color> surface-container-low:     surface.mix(on-surface, 0.96);
+    out property <color> surface-container:         surface.mix(on-surface, 0.93);
+    out property <color> surface-container-high:    surface.mix(on-surface, 0.89);
+    out property <color> surface-container-highest: surface.mix(on-surface, 0.86);
+    out property <color> outline-variant:           surface.mix(on-surface, 0.72);
+    out property <color> nav-bg:                    surface.mix(on-surface, 0.93);
+    out property <color> shadow:             dark ? #00000066 : #0000001F;
+
+    // --- Ошибки (M3 error roles) ---
+    out property <color> error:              dark ? #F2B8B5 : #B3261E;
+    out property <color> error-container:    dark ? #8C1D18 : #F9DEDC;
+    out property <color> on-error-container:  dark ? #F9DEDC : #410E0B;
+
+    // --- Производные ---
+    out property <color> primary-2: primary.brighter(0.12);
+
+    // --- Цвета оценок (светлее/пастельнее в тёмной теме — для контраста) ---
+    out property <color> mark-5: dark ? #7FD98A : #2E7D32;
+    out property <color> mark-4: dark ? #7FB2F0 : #1565C0;
+    out property <color> mark-3: dark ? #F5B871 : #E67700;
+    out property <color> mark-2: dark ? #F0918C : #C62828;
+
+    // --- Форма (M3 shape scale, строже) ---
+    out property <length> radius-s: 8px;
+    out property <length> radius-m: 12px;
+    out property <length> radius-l: 12px;
+    out property <length> radius-xl: 20px;
+}
+
+// Цвет оценки по её значению (общий помощник)
+component MarkColor {
+    in property <int> value;
+    out property <color> fg: value >= 5 ? Theme.mark-5
+                           : value == 4 ? Theme.mark-4
+                           : value == 3 ? Theme.mark-3
+                           : value >  0 ? Theme.mark-2
+                           :              Theme.on-surface-variant;
+}
+
+// M3 tonal-жетон оценки. Отдельная фигура — только для оценки.
+component MarkToken inherits Rectangle {
+    in property <string> text;
+    in property <int> value;
+    in property <length> size: 44px;
+    in property <length> font: 20px;
+
+    property <color> fg: mc.fg;
+    mc := MarkColor { value: root.value; }
+
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 4;
+    background: root.fg.transparentize(0.88);
+    border-width: 1px;
+    border-color: root.fg.transparentize(0.7);
+
+    Text {
+        width: 100%; height: 100%;
+        text: root.text;
+        font-size: root.font;
+        font-weight: 700;
+        color: root.fg;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// Крупная карточка недавней оценки (прямоугольная, скруглённая, M3 filled card)
+component RecentGradeCard inherits Rectangle {
+    in property <string> subject;
+    in property <string> mark;
+    in property <int> mark-val;
+    in property <string> date;
+
+    width: 132px;
+    height: 116px;
+    border-radius: Theme.radius-l;
+    background: Theme.surface-container-high;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+
+        // Дата выставления оценки
+        Text {
+            text: root.date;
+            font-size: 11px;
+            font-weight: 600;
+            color: Theme.on-surface-variant;
+            overflow: elide;
+            wrap: no-wrap;
+        }
+
+        // Крупный жетон оценки
+        HorizontalLayout {
+            alignment: start;
+            MarkToken {
+                text: root.mark;
+                value: root.mark-val;
+                size: 44px;
+                font: 22px;
+            }
+        }
+
+        // Прижимаем предмет к низу карточки
+        Rectangle { vertical-stretch: 1; }
+
+        Text {
+            text: root.subject;
+            font-size: 12px;
+            font-weight: 500;
+            color: Theme.on-surface;
+            overflow: elide;
+            wrap: no-wrap;
+        }
+    }
+}
+
+// M3 filled / outlined кнопка
+component MaterialButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> filled: true;
+    callback clicked();
+    height: 40px;
+    border-radius: 20px;
+    background: root.filled
+        ? (ta.pressed ? Theme.primary.darker(0.12) : Theme.primary)
+        : (ta.pressed ? Theme.primary.transparentize(0.88) : transparent);
+    border-width: root.filled ? 0px : 1px;
+    border-color: Theme.outline;
+    animate background { duration: 120ms; }
+    HorizontalLayout {
+        alignment: center;
+        padding-left: 24px;
+        padding-right: 24px;
+        Text {
+            text: root.text;
+            color: root.filled ? Theme.on-primary : Theme.primary;
+            font-size: 15px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Строка детали (иконка + текст) для раскрытой карточки урока
+component DetailRow inherits HorizontalLayout {
+    in property <string> icon;
+    in property <string> label;
+    in property <string> value;
+    spacing: 8px;
+
+    VerticalLayout {
+        alignment: start;
+        padding-top: 1px;
+        Path {
+            width: 15px;
+            height: 15px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: root.icon;
+            fill: transparent;
+            stroke: Theme.on-surface-variant;
+            stroke-width: 1.6px;
+        }
+    }
+    VerticalLayout {
+        horizontal-stretch: 1;
+        spacing: 1px;
+        Text {
+            text: root.label;
+            font-size: 10px;
+            font-weight: 600;
+            color: Theme.on-surface-variant.transparentize(0.3);
+        }
+        Text {
+            text: root.value;
+            font-size: 13px;
+            color: Theme.on-surface;
+            wrap: word-wrap;
+        }
+    }
+}
+
+// ============================================================
+//  Карточка урока — раскрывается по тапу (тема + ДЗ)
+// ============================================================
+component LessonCard inherits Rectangle {
+    in property <int>    number;
+    in property <string> time;
+    in property <string> subject;
+    in property <string> room;
+    in property <string> homework;
+    in property <string> topic;
+    in property <string> teacher;
+    in property <string> mark;
+    in property <int>    mark-value;
+    in property <string> absence;
+    in property <string> grade-type;
+    in property <bool>   is-event;
+    in property <string> event-id;
+    in property <bool>   hw-done;
+    in property <string> hw-key;
+    callback delete-requested();
+    callback toggle-homework(string, bool);
+
+    // Локальное состояние чекбокса ДЗ: инициализируется из hw-done,
+    // после тапа — своё значение (перебивает биндинг для этого инстанса).
+    property <bool> done: root.hw-done;
+    property <bool> has-hw: root.homework != "";
+    property <bool> has-topic: root.topic != "";
+    property <bool> has-details: root.has-hw || root.has-topic;
+    property <bool> has-absence: root.absence != "";
+    property <bool> has-gtype: root.grade-type != "";
+    property <bool> expanded: false;
+
+    // Высота = высота контента. Плавность даёт анимация высоты блока
+    // деталей (details-clip) ниже: card.preferred-height меняется покадрово.
+    // min/max-height (не height!) — потому что LessonCard лежит в VerticalLayout,
+    // который игнорирует явную height (из-за этого карточка и прыгала).
+    min-height: card.preferred-height + 10px;
+    max-height: self.min-height;
+    background: transparent;
+
+    card := Rectangle {
+        x: 12px;
+        y: 5px;
+        width: parent.width - 24px;
+        height: parent.height - 10px;
+        border-radius: Theme.radius-l;
+        background: Theme.surface-container;
+        clip: true;
+
+        // Тап по карточке — раскрыть/свернуть. Объявлен ДО контента, чтобы
+        // интерактивные элементы (чекбокс ДЗ, удаление) были поверх и ловили тап.
+        ta := TouchArea {
+            enabled: root.has-details;
+            clicked => {
+                if (root.has-details) { root.expanded = !root.expanded; }
+            }
+        }
+
+        VerticalLayout {
+            padding: 12px;
+            spacing: 0px;
+
+            // --- Основная строка урока ---
+            HorizontalLayout {
+                spacing: 12px;
+
+                // Leading: номер урока (или иконка-звёздочка для события)
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 20px;
+                        background: root.is-event ? Theme.primary-container : Theme.secondary-container;
+                        if !root.is-event : Text {
+                            text: "\{root.number}";
+                            font-size: 17px;
+                            font-weight: 700;
+                            color: Theme.on-secondary-container;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        if root.is-event : Path {
+                            width: 20px;
+                            height: 20px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: "M12 3 L14.6 8.3 L20.4 9.1 L16.2 13.2 L17.2 19 L12 16.3 L6.8 19 L7.8 13.2 L3.6 9.1 L9.4 8.3 Z";
+                            fill: Theme.on-primary-container;
+                            stroke: transparent;
+                        }
+                    }
+                }
+
+                // Контент: растягивается на всё свободное место
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: root.subject;
+                        font-size: 15px;
+                        font-weight: 600;
+                        color: Theme.on-surface;
+                        overflow: elide;
+                        wrap: no-wrap;
+                    }
+                    Text {
+                        text: root.teacher + (root.room != "" ? "  ·  " + root.room : "");
+                        font-size: 12px;
+                        color: Theme.on-surface-variant;
+                        overflow: elide;
+                        wrap: no-wrap;
+                    }
+                    Text {
+                        text: root.time;
+                        font-size: 11px;
+                        color: Theme.on-surface-variant.transparentize(0.4);
+                        overflow: elide;
+                        wrap: no-wrap;
+                    }
+
+                    // Чип: вид работы (тональный)
+                    if root.has-gtype : HorizontalLayout {
+                        alignment: start;
+                        padding-top: 3px;
+
+                        Rectangle {
+                            background: Theme.secondary-container;
+                            border-radius: 6px;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                padding-top: 2px;
+                                padding-bottom: 2px;
+                                Text {
+                                    text: root.grade-type;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    color: Theme.on-secondary-container;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Trailing: оценка; если её нет, а есть пропуск — ставим пропуск
+                if root.mark-value > 0 : VerticalLayout {
+                    alignment: center;
+                    MarkToken {
+                        text: root.mark;
+                        value: root.mark-value;
+                        size: 44px;
+                        font: 20px;
+                    }
+                }
+                if root.mark-value <= 0 && root.has-absence : VerticalLayout {
+                    alignment: center;
+                    // Пропуск — такой же токен, как оценка
+                    MarkToken {
+                        text: "П";
+                        value: 2;
+                        size: 44px;
+                        font: 20px;
+                    }
+                }
+
+                // Кнопка удаления — только для своих событий
+                if root.is-event : VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 20px;
+                        background: del-ta.pressed ? Theme.error-container : transparent;
+                        Path {
+                            width: 15px;
+                            height: 15px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: "M6 6 L18 18 M6 18 L18 6";
+                            fill: transparent;
+                            stroke: Theme.on-surface-variant;
+                            stroke-width: 2px;
+                        }
+                        del-ta := TouchArea {
+                            clicked => { root.delete-requested(); }
+                        }
+                    }
+                }
+
+                // Шеврон-индикатор раскрытия (только если есть детали)
+                if root.has-details : VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 22px;
+                        height: 22px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: root.expanded ? "M6 15 L12 9 L18 15" : "M6 9 L12 15 L18 9";
+                        fill: transparent;
+                        stroke: Theme.on-surface-variant;
+                        stroke-width: 2px;
+                    }
+                }
+            }
+
+            // --- Раскрытые детали ---
+            // Всегда в дереве. Сворачивание/раскрытие — плавная анимация высоты
+            // контейнера с обрезкой (clip), поэтому контент не исчезает мгновенно
+            // и карточка не «прыгает» ни при открытии, ни при закрытии.
+            details-clip := Rectangle {
+                clip: true;
+                min-height: (root.expanded && root.has-details) ? details-inner.preferred-height : 0px;
+                max-height: self.min-height;
+                animate min-height { duration: 200ms; easing: ease-in-out; }
+
+                details-inner := VerticalLayout {
+                    x: 0;
+                    y: 0;
+                    width: parent.width;
+                    height: self.preferred-height;
+                    padding-top: 12px;
+                    spacing: 10px;
+
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.on-surface-variant.transparentize(0.88);
+                    }
+
+                    if root.has-topic : DetailRow {
+                        label: "Тема урока";
+                        value: root.topic;
+                        icon: "M4 7 h16 M4 12 h16 M4 17 h11";
+                    }
+                    if root.has-hw : HorizontalLayout {
+                        spacing: 10px;
+                        DetailRow {
+                            horizontal-stretch: 1;
+                            label: "Домашнее задание";
+                            value: root.homework;
+                            icon: "M7 3 h7 l4 4 v13 a1 1 0 0 1 -1 1 h-10 a1 1 0 0 1 -1 -1 v-17 a1 1 0 0 1 1 -1 z M14 3 v4 h4 M8.5 12.5 h7 M8.5 16 h5";
+                        }
+                        // Чекбокс «выполнено» — локальная отметка
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 28px;
+                                height: 28px;
+                                border-radius: 8px;
+                                background: root.done ? Theme.primary : transparent;
+                                border-width: root.done ? 0px : 2px;
+                                border-color: Theme.outline;
+                                Path {
+                                    width: 16px;
+                                    height: 16px;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    viewbox-width: 24;
+                                    viewbox-height: 24;
+                                    commands: root.done ? "M5 13 L10 18 L19 7" : "";
+                                    fill: transparent;
+                                    stroke: Theme.on-primary;
+                                    stroke-width: 2.5px;
+                                }
+                                hw-ta := TouchArea {
+                                    clicked => {
+                                        root.done = !root.done;
+                                        root.toggle-homework(root.hw-key, root.done);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+}
+
+// Монохромная векторная иконка: контурная (stroke) когда неактивна,
+// залитая (fill) когда активна. Один пак, стиль Material Symbols.
+// id: 0 — дневник (календарь), 1 — оценки (столбцы), 2 — профиль (человек)
+component NavIcon inherits Rectangle {
+    in property <int> id;
+    in property <bool> selected;
+    in property <color> tint;
+
+    property <string> cmd-outline:
+        root.id == 0 ? "M5 6 a2 2 0 0 1 2 -2 h10 a2 2 0 0 1 2 2 v12 a2 2 0 0 1 -2 2 h-10 a2 2 0 0 1 -2 -2 z M5 9 h14 M9 3 v3 M15 3 v3"
+      : root.id == 1 ? "M4 21 h16 M6 21 v-6 M12 21 v-12 M18 21 v-9"
+      :                "M12 12 a4 4 0 1 0 0 -8 a4 4 0 1 0 0 8 z M5 21 a7 7 0 0 1 14 0";
+
+    property <string> cmd-fill:
+        root.id == 0 ? "M6 4 h12 a2 2 0 0 1 2 2 v12 a2 2 0 0 1 -2 2 h-12 a2 2 0 0 1 -2 -2 v-12 a2 2 0 0 1 2 -2 z M8 2 v3 M16 2 v3"
+      : root.id == 1 ? "M5 13 h3 v7 h-3 z M10.5 8 h3 v12 h-3 z M16 11 h3 v9 h-3 z"
+      :                "M12 12 a4 4 0 1 0 0 -8 a4 4 0 1 0 0 8 z M4 21 a8 8 0 0 1 16 0 z";
+
+    Path {
+        width: 24px; height: 24px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        viewbox-x: 0; viewbox-y: 0;
+        viewbox-width: 24; viewbox-height: 24;
+        commands: root.selected ? root.cmd-fill : root.cmd-outline;
+        fill: root.selected ? root.tint : transparent;
+        stroke: root.selected ? transparent : root.tint;
+        stroke-width: 1.8px;
+    }
+}
+
+component NavItem inherits Rectangle {
+    in property <int> icon-id;
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+        HorizontalLayout {
+            alignment: center;
+            // Таблетка-подложка активного таба (M3 active indicator)
+            Rectangle {
+                width: 64px;
+                height: 32px;
+                border-radius: 16px;
+                background: root.selected ? Theme.secondary-container : transparent;
+                animate background { duration: 150ms; }
+                NavIcon {
+                    width: 100%; height: 100%;
+                    id: root.icon-id;
+                    selected: root.selected;
+                    tint: root.selected ? Theme.on-secondary-container : Theme.on-surface-variant;
+                }
+            }
+        }
+        Text {
+            text: root.label;
+            font-size: 12px;
+            horizontal-alignment: center;
+            color: root.selected ? Theme.on-surface : Theme.on-surface-variant;
+            font-weight: root.selected ? 700 : 500;
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+component InfoRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    spacing: 8px;
+    Text {
+        text: root.label;
+        font-size: 14px;
+        color: Theme.on-surface-variant;
+        width: 92px;
+    }
+    Text {
+        text: root.value;
+        font-size: 14px;
+        font-weight: 600;
+        color: Theme.on-surface;
+        wrap: word-wrap;
+    }
+}
+
+component LoginScreen inherits Rectangle {
+    in property <string> login-error;
+    in property <bool> logging-in;
+    callback login-requested();
+    background: Theme.background;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 18px;
+        padding: 36px;
+
+        Rectangle {
+            height: 110px;
+            width: 110px;
+            border-radius: Theme.radius-xl;
+            background: @linear-gradient(135deg, Theme.primary 0%, Theme.primary-2 100%);
+            drop-shadow-blur: 24px;
+            drop-shadow-color: Theme.primary.transparentize(0.4);
+            drop-shadow-offset-y: 8px;
+            Text {
+                text: "🎓";
+                font-size: 52px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Text {
+            text: "Электронный дневник";
+            font-size: 26px;
+            font-weight: 800;
+            color: Theme.on-surface;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: "Войдите через Госуслуги,\nчтобы увидеть оценки и расписание";
+            font-size: 14px;
+            color: Theme.on-surface-variant;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+
+        // Баннер ошибки входа
+        if root.login-error != "" : Rectangle {
+            height: err.preferred-height + 20px;
+            border-radius: Theme.radius-m;
+            background: Theme.error-container;
+            err := HorizontalLayout {
+                padding: 12px;
+                spacing: 8px;
+                Text { text: "⚠️"; font-size: 16px; vertical-alignment: center; }
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.login-error;
+                    font-size: 13px;
+                    font-weight: 500;
+                    color: Theme.on-error-container;
+                    wrap: word-wrap;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        Rectangle { height: 12px; }
+
+        MaterialButton {
+            height: 52px;
+            text: root.logging-in ? "Вход…" : "Войти через Госуслуги";
+            clicked => { if (!root.logging-in) { root.login-requested(); } }
+        }
+
+        // Спиннер во время входа
+        if root.logging-in : HorizontalLayout {
+            alignment: center;
+            Spinner {
+                width: 28px; height: 28px;
+                indeterminate: true;
+            }
+        }
+    }
+}
+
+// ============================================================
+//  M3 Segmented Buttons (одиночный выбор)
+// ============================================================
+component SegmentedButtons inherits Rectangle {
+    in property <[string]> options;
+    in property <int> selected;
+    callback select(int);
+
+    height: 40px;
+    border-radius: 20px;
+    border-width: 1px;
+    border-color: Theme.outline;
+    clip: true;
+
+    HorizontalLayout {
+        for opt[i] in root.options : Rectangle {
+            horizontal-stretch: 1;
+            background: i == root.selected ? Theme.secondary-container : transparent;
+
+            // Разделитель слева (кроме первого и соседей выбранного)
+            if (i > 0 && i != root.selected && (i - 1) != root.selected) : Rectangle {
+                x: 0;
+                width: 1px;
+                height: parent.height;
+                background: Theme.outline;
+            }
+
+            Text {
+                text: opt;
+                font-size: 13px;
+                font-weight: i == root.selected ? 700 : 500;
+                color: i == root.selected ? Theme.on-secondary-container : Theme.on-surface;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            seg-ta := TouchArea { clicked => { root.select(i); } }
+        }
+    }
+}
+
+// Шторка создания своего события (выезжает снизу, с затемнением)
+component EventSheet inherits Rectangle {
+    callback save(string, string, string);
+    callback close();
+
+    property <bool> valid: name-in.text != "" && start-in.text != ""
+        && !Validate.invalid(start-in.text) && !Validate.invalid(end-in.text);
+    // Клавиатура открыта, когда любое поле в фокусе
+    property <bool> kb-open: name-in.has-focus || start-in.has-focus || end-in.has-focus;
+
+    background: #000000.transparentize(0.5);
+
+    scrim-ta := TouchArea {
+        clicked => { root.close(); }
+    }
+
+    sheet-bg := Rectangle {
+        width: 100%;
+        height: sheet.preferred-height;
+        // Когда открыта клавиатура (поле в фокусе) — поднимаем шторку над клавиатурой
+        y: parent.height - self.height - (root.kb-open ? parent.height * 0.34 : 0px);
+        animate y { duration: 180ms; easing: ease-out; }
+        border-radius: 28px;
+        background: Theme.surface-container;
+
+        inner-ta := TouchArea {
+            clicked => { dismiss-fs.focus(); }
+        }
+        // Невидимый приёмник фокуса — чтобы убрать фокус с поля и спрятать клавиатуру
+        dismiss-fs := FocusScope { width: 0px; height: 0px; }
+
+        sheet := VerticalLayout {
+            padding: 20px;
+            spacing: 14px;
+
+            // «ручка» сверху
+            Rectangle {
+                height: 4px;
+                width: 40px;
+                x: (parent.width - self.width) / 2;
+                border-radius: 2px;
+                background: Theme.outline-variant;
+            }
+
+            // Заголовок + закрыть
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: "Новое событие";
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: Theme.on-surface;
+                    vertical-alignment: center;
+                }
+                Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: close-ta.pressed ? Theme.surface-container-highest : transparent;
+                    Path {
+                        width: 15px;
+                        height: 15px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M6 6 L18 18 M6 18 L18 6";
+                        fill: transparent;
+                        stroke: Theme.on-surface-variant;
+                        stroke-width: 2px;
+                    }
+                    close-ta := TouchArea {
+                        clicked => { root.close(); }
+                    }
+                }
+            }
+
+            // Название события
+            Text {
+                text: "Название";
+                font-size: 13px;
+                font-weight: 600;
+                color: Theme.on-surface-variant;
+            }
+            Rectangle {
+                height: 52px;
+                border-radius: Theme.radius-m;
+                background: Theme.surface-container-highest;
+                name-in := TextInput {
+                    x: 14px;
+                    width: parent.width - 28px;
+                    height: 100%;
+                    vertical-alignment: center;
+                    font-size: 16px;
+                    color: Theme.on-surface;
+                    single-line: true;
+                    accepted => { dismiss-fs.focus(); }
+                }
+                if name-in.text == "" : Text {
+                    x: 14px;
+                    width: parent.width - 28px;
+                    height: 100%;
+                    vertical-alignment: center;
+                    text: "например, тренировка";
+                    font-size: 16px;
+                    color: Theme.on-surface-variant.transparentize(0.3);
+                }
+            }
+
+            // Время начала и конца
+            Text {
+                text: "Время";
+                font-size: 13px;
+                font-weight: 600;
+                color: Theme.on-surface-variant;
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 52px;
+                    border-radius: Theme.radius-m;
+                    background: Theme.surface-container-highest;
+                    border-width: Validate.invalid(start-in.text) ? 2px : 0px;
+                    border-color: Theme.error;
+                    start-in := TextInput {
+                        x: 14px;
+                        width: parent.width - 28px;
+                        height: 100%;
+                        vertical-alignment: center;
+                        font-size: 16px;
+                        color: Theme.on-surface;
+                        single-line: true;
+                        accepted => { dismiss-fs.focus(); }
+                    }
+                    if start-in.text == "" : Text {
+                        x: 14px;
+                        width: parent.width - 28px;
+                        height: 100%;
+                        vertical-alignment: center;
+                        text: "08:05";
+                        font-size: 16px;
+                        color: Theme.on-surface-variant.transparentize(0.3);
+                    }
+                }
+                Text {
+                    text: "–";
+                    font-size: 22px;
+                    color: Theme.on-surface-variant;
+                    vertical-alignment: center;
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 52px;
+                    border-radius: Theme.radius-m;
+                    background: Theme.surface-container-highest;
+                    border-width: Validate.invalid(end-in.text) ? 2px : 0px;
+                    border-color: Theme.error;
+                    end-in := TextInput {
+                        x: 14px;
+                        width: parent.width - 28px;
+                        height: 100%;
+                        vertical-alignment: center;
+                        font-size: 16px;
+                        color: Theme.on-surface;
+                        single-line: true;
+                        accepted => { dismiss-fs.focus(); }
+                    }
+                    if end-in.text == "" : Text {
+                        x: 14px;
+                        width: parent.width - 28px;
+                        height: 100%;
+                        vertical-alignment: center;
+                        text: "08:45";
+                        font-size: 16px;
+                        color: Theme.on-surface-variant.transparentize(0.3);
+                    }
+                }
+            }
+
+            // Кнопка «Сохранить»
+            Rectangle {
+                height: 52px;
+                border-radius: 26px;
+                background: root.valid
+                    ? (save-ta.pressed ? Theme.primary.darker(0.1) : Theme.primary)
+                    : Theme.surface-container-highest;
+                Text {
+                    width: 100%;
+                    height: 100%;
+                    text: "Сохранить";
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: root.valid ? Theme.on-primary : Theme.on-surface-variant.transparentize(0.4);
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                save-ta := TouchArea {
+                    clicked => {
+                        if (root.valid) {
+                            root.save(name-in.text, start-in.text, end-in.text);
+                            root.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component DiaryView inherits Rectangle {
+    in property <[RecentGrade]> recent-grades;
+    in property <string> current-date;
+    in property <[Lesson]> lessons;
+    in property <string> net-error;
+    in property <bool> loading;
+    callback prev-day();
+    callback next-day();
+    callback open-calendar();
+    callback refresh();
+    // Числовая текущая дата (для выбора дня недели)
+    in property <int> cur-year;
+    in property <int> cur-month;
+    in property <int> cur-day;
+    callback pick-date(int, int, int);
+    // Свои события пользователя
+    callback add-event(string, string, string);
+    callback delete-event(string);
+    callback toggle-homework(string, bool);
+    private property <bool> event-open: false;
+    background: Theme.background;
+
+    // Лента показывается только при наличии оценок
+    property <bool> has-grades: root.recent-grades.length > 0;
+
+    // Короткая дата для шапки: ДД.ММ
+    property <string> dd: root.cur-day < 10 ? "0\{root.cur-day}" : "\{root.cur-day}";
+    property <string> mm: root.cur-month < 10 ? "0\{root.cur-month}" : "\{root.cur-month}";
+    property <string> date-short: root.cur-day == 0 ? root.current-date : root.dd + "." + root.mm;
+
+    // --- Pull-to-refresh ---
+    property <length> pull: 0;          // текущее натяжение (px)
+    property <length> pull-trigger: 72px; // порог срабатывания
+
+    // --- Fade при смене дня ---
+    property <float> list-fade: 1.0;
+    animate list-fade { duration: 150ms; easing: ease-in-out; }
+    changed current-date => {
+        root.list-fade = 0.25;
+        // Императивно запускаем таймер: restart() не переопределял
+        // константный binding `running: false`, из-за чего таймер не
+        // срабатывал и список навсегда оставался затемнён на 25%.
+        fade-timer.running = true;
+    }
+    fade-timer := Timer {
+        interval: 150ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.list-fade = 1.0;
+        }
+    }
+
+    VerticalLayout {
+        // --- Верхняя панель навигации по дням (не сворачивается) ---
+        Rectangle {
+            height: 88px;
+            HorizontalLayout {
+                padding-left: 0px;
+                padding-right: 0px;
+                padding-top: 14px;
+                alignment: space-between;
+
+                Rectangle {
+                    width: 96px; height: 74px;
+                    // Зона тапа — весь угол (96×74), визуальный кружок 46px по центру
+                    Rectangle {
+                        width: 46px; height: 46px; border-radius: 23px;
+                        background: pa.pressed ? Theme.secondary-container.darker(0.08) : Theme.secondary-container;
+                        Text { text: "‹"; font-size: 24px; color: Theme.on-secondary-container; horizontal-alignment: center; vertical-alignment: center; }
+                    }
+                    pa := TouchArea { clicked => { root.prev-day(); } }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 72px;
+                    border-radius: 28px;
+                    background: da.pressed ? Theme.secondary-container.transparentize(0.5) : transparent;
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 6px;
+                        Text {
+                            text: root.date-short;
+                            font-size: 22px; font-weight: 700;
+                            color: Theme.on-surface;
+                            vertical-alignment: center;
+                        }
+                    }
+                    da := TouchArea { clicked => { root.open-calendar(); } }
+                }
+
+                Rectangle {
+                    width: 96px; height: 74px;
+                    // Зона тапа — весь угол (96×74), визуальный кружок 46px по центру
+                    Rectangle {
+                        width: 46px; height: 46px; border-radius: 23px;
+                        background: na.pressed ? Theme.secondary-container.darker(0.08) : Theme.secondary-container;
+                        Text { text: "›"; font-size: 24px; color: Theme.on-secondary-container; horizontal-alignment: center; vertical-alignment: center; }
+                    }
+                    na := TouchArea { clicked => { root.next-day(); } }
+                }
+            }
+        }
+
+        // --- Выбор дня недели (M3 Segmented Buttons) ---
+        Rectangle {
+            height: 56px;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                VerticalLayout {
+                    alignment: center;
+                    SegmentedButtons {
+                        options: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+                        selected: CalMath.dow-mon(root.cur-year, root.cur-month, root.cur-day);
+                        select(i) => {
+                            root.pick-date(
+                                CalMath.dec-year(CalMath.shift-date(root.cur-year, root.cur-month, root.cur-day, i - CalMath.dow-mon(root.cur-year, root.cur-month, root.cur-day))),
+                                CalMath.dec-month(CalMath.shift-date(root.cur-year, root.cur-month, root.cur-day, i - CalMath.dow-mon(root.cur-year, root.cur-month, root.cur-day))),
+                                CalMath.dec-day(CalMath.shift-date(root.cur-year, root.cur-month, root.cur-day, i - CalMath.dow-mon(root.cur-year, root.cur-month, root.cur-day)))
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Баннер ошибки сети (оффлайн / VPN) ---
+        if root.net-error != "" : Rectangle {
+            height: 56px;
+            background: Theme.error-container;
+
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                spacing: 10px;
+
+                Text {
+                    text: "⚠️";
+                    font-size: 18px;
+                    vertical-alignment: center;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.net-error;
+                    font-size: 13px;
+                    font-weight: 500;
+                    color: Theme.on-error-container;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        // --- Лента недавних оценок (статичная, только если есть оценки) ---
+        if root.has-grades : Rectangle {
+            height: 140px;
+            clip: true;
+
+            Flickable {
+                x: 0; y: 0;
+                width: parent.width; height: 140px;
+                viewport-width: max(parent.width, root.recent-grades.length * 142px + 12px);
+                viewport-height: self.height;
+
+                HorizontalLayout {
+                    y: 12px; height: 116px;
+                    padding-left: 12px; padding-right: 12px;
+                    spacing: 10px;
+
+                    for g in root.recent-grades : RecentGradeCard {
+                        subject: g.subject;
+                        mark: g.mark;
+                        mark-val: g.mark-val;
+                        date: g.date;
+                    }
+                }
+            }
+        }
+
+        // --- Список уроков / пустое состояние (с pull-to-refresh и fade свайпа) ---
+        // --- Список уроков / пустое состояние (с pull-to-refresh) ---
+        list-area := Rectangle {
+            vertical-stretch: 1;
+            clip: true;
+
+            // Свайп между днями убран — листаем стрелками сверху и выбором дня
+            // недели (Segmented Buttons). Так в��ртикальный скролл уроков работа��т
+            // без конфликтов жестов.
+            flick := Flickable {
+                width: 100%;
+                height: 100%;
+                viewport-width: flick.width;
+                viewport-height: lessons-col.preferred-height;
+
+                changed viewport-y => {
+                    if (self.viewport-y > 0px && !root.loading) {
+                        root.pull = self.viewport-y;
+                        if (self.viewport-y >= root.pull-trigger) {
+                            root.refresh();
+                            root.pull = 0px;
+                        }
+                    } else {
+                        root.pull = 0px;
+                    }
+                }
+
+                lessons-col := VerticalLayout {
+                    width: flick.width;
+                    alignment: start;
+                    padding-top: 12px;
+                    padding-bottom: 12px;
+
+                    // Обертка контента для применения fade-эффекта из DiaryView
+                    content-opacity := Rectangle {
+                        width: 100%;
+                        opacity: root.list-fade; 
+
+                        VerticalLayout {
+                            alignment: start;
+                            for l in root.lessons : LessonCard {
+                                number: l.number;
+                                time: l.time;
+                                subject: l.subject;
+                                room: l.room;
+                                homework: l.homework;
+                                topic: l.topic;
+                                teacher: l.teacher;
+                                mark: l.mark;
+                                mark-value: l.mark-value;
+                                absence: l.absence;
+                                grade-type: l.grade-type;
+                                is-event: l.is-event;
+                                event-id: l.event-id;
+                                hw-done: l.hw-done;
+                                hw-key: l.hw-key;
+                                delete-requested => { root.delete-event(l.event-id); }
+                                toggle-homework(k, d) => { root.toggle-homework(k, d); }
+                            }
+                        }
+                    }
+                }
+            }
+            // Индикатор Pull-to-refresh 
+            if flick.viewport-y > 5px && !root.loading : Rectangle {
+                property <length> display-pull: min(flick.viewport-y, 70px);
+                y: self.display-pull - 45px;
+                height: 40px; width: 40px;
+                x: (parent.width - self.width) / 2;
+                border-radius: 20px;
+                background: Theme.surface-container-high;
+                drop-shadow-blur: 6px;
+                drop-shadow-color: Theme.shadow;
+                opacity: min(flick.viewport-y / root.pull-trigger, 1.0);
+                
+                Text {
+                    width: 100%;
+                    height: 100%;
+                    text: flick.viewport-y >= root.pull-trigger ? "↑" : "��";
+                    font-size: 18px;
+                    color: Theme.primary;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            // Крутящийся спиннер загрузки
+            if root.loading : Rectangle {
+                y: 15px;
+                height: 44px; width: 44px;
+                x: (parent.width - self.width) / 2;
+                border-radius: 22px;
+                background: Theme.surface-container-high;
+                drop-shadow-blur: 8px;
+                drop-shadow-color: Theme.shadow;
+                Spinner {
+                    width: 26px;
+                    height: 26px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    indeterminate: true;
+                }
+            }
+
+            // Пустой день
+            if root.lessons.length == 0 && root.net-error == "" : VerticalLayout {
+                alignment: center;
+                spacing: 10px;
+                opacity: root.list-fade;
+                
+                Text {
+                    text: "🌤";
+                    font-size: 48px;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "В этот день уроков нет";
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: Theme.on-surface-variant;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+
+    // --- FAB: добавить своё событие (правый нижний угол) ---
+    Rectangle {
+        width: 56px;
+        height: 56px;
+        x: parent.width - self.width - 16px;
+        y: parent.height - self.height - 20px;
+        border-radius: 18px;
+        background: fab-ta.pressed ? Theme.primary-container.darker(0.08) : Theme.primary-container;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: Theme.shadow;
+        drop-shadow-offset-y: 3px;
+        Path {
+            width: 26px;
+            height: 26px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: "M12 5 L12 19 M5 12 L19 12";
+            fill: transparent;
+            stroke: Theme.on-primary-container;
+            stroke-width: 2.5px;
+        }
+        fab-ta := TouchArea {
+            clicked => { root.event-open = true; }
+        }
+    }
+
+    // --- Шторка создания события ---
+    if root.event-open : EventSheet {
+        width: 100%;
+        height: 100%;
+        save(n, s, e) => { root.add-event(n, s, e); }
+        close => { root.event-open = false; }
+    }
+}
+
+component ProfileView inherits Rectangle {
+    in property <string> full-name;
+    in property <string> school-name;
+    in property <string> school-class;
+    in property <string> guid;
+    in property <string> sid;
+    in property <image> avatar;
+    in property <bool> has-avatar;
+    callback logout();
+    callback pick-avatar();
+    callback open-url(string);
+    background: Theme.background;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 16px;
+
+        Rectangle {
+            border-radius: Theme.radius-l;
+            background: Theme.surface-container;
+            height: card.preferred-height + 28px;
+            card := VerticalLayout {
+                padding: 16px;
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 14px;
+                    Rectangle {
+                        width: 88px; height: 88px;
+                        // Круглый аватар с обрезкой
+                        Rectangle {
+                            width: 100%; height: 100%; border-radius: 44px;
+                            background: @linear-gradient(135deg, Theme.primary 0%, Theme.primary-2 100%);
+                            clip: true;
+                            if root.has-avatar : Image {
+                                source: root.avatar;
+                                width: 100%; height: 100%;
+                                image-fit: cover;
+                            }
+                            if !root.has-avatar : Text {
+                                text: "👤"; font-size: 44px;
+                                horizontal-alignment: center; vertical-alignment: center;
+                            }
+                        }
+                        // Бейдж-камера поверх, в правом нижнем углу
+                        Rectangle {
+                            width: 28px; height: 28px; border-radius: 14px;
+                            background: Theme.surface-container-high;
+                            border-width: 2px; border-color: Theme.surface-container;
+                            x: parent.width - self.width;
+                            y: parent.height - self.height;
+                            Text { text: "📷"; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
+                        }
+                        TouchArea { clicked => { root.pick-avatar(); } }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        Text { text: root.full-name; font-size: 16px; font-weight: 700; color: Theme.on-surface; wrap: word-wrap; }
+                        Text { text: root.school-class + " класс"; font-size: 13px; color: Theme.on-surface-variant; }
+                    }
+                }
+                Rectangle { height: 1px; background: Theme.outline-variant; }
+                InfoRow { label: "Школа"; value: root.school-name; }
+            }
+        }
+
+        MaterialButton {
+            height: 48px;
+            text: "Выйти";
+            filled: false;
+            clicked => { root.logout(); }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        // Подпись + кликабельная ссылка на GitHub
+        VerticalLayout {
+            spacing: 3px;
+            Text {
+                text: "Неофициальный клиент Образования 57";
+                font-size: 11px; color: Theme.on-surface-variant;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: "сделано на Rust + Slint w love)";
+                font-size: 11px; color: Theme.on-surface-variant;
+                horizontal-alignment: center;
+            }
+            TouchArea {
+                height: linkText.preferred-height;
+                linkText := Text {
+                    text: "github.com/vodolazny/burmalda57";
+                    font-size: 11px; color: Theme.primary;
+                    width: 100%;
+                    horizontal-alignment: center;
+                }
+                clicked => { root.open-url("https://github.com/vodolazny/burmalda57"); }
+            }
+        }
+    }
+
+    // --- FAB: отзыв / пожелание / баг (Открывает Яндекс.Форму) ---
+    Rectangle {
+        width: 56px;
+        height: 56px;
+        x: parent.width - self.width - 16px;
+        y: parent.height - self.height - 20px;
+        border-radius: 18px;
+        background: feedback-ta.pressed ? Theme.primary-container.darker(0.08) : Theme.primary-container;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: Theme.shadow;
+        drop-shadow-offset-y: 3px;
+        Path {
+            width: 26px;
+            height: 26px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: "M12 6.5 C14.8 6.5 17 9.4 17 13 C17 16.6 14.8 19.5 12 19.5 C9.2 19.5 7 16.6 7 13 C7 9.4 9.2 6.5 12 6.5 Z M12 8 L12 18 M12 3 C13.2 3 14.2 4 14.2 5.2 C14.2 6.4 13.2 7.4 12 7.4 C10.8 7.4 9.8 6.4 9.8 5.2 C9.8 4 10.8 3 12 3 Z M10.6 3.4 L9.2 1.8 M13.4 3.4 L14.8 1.8 M7.2 10 L3.8 8.4 M7 13 L3.3 13 M7.2 16 L3.8 17.6 M16.8 10 L20.2 8.4 M17 13 L20.7 13 M16.8 16 L20.2 17.6";
+            fill: transparent;
+            stroke: Theme.on-primary-container;
+            stroke-width: 1.8px;
+        }
+        feedback-ta := TouchArea {
+            clicked => { root.open-url("https://forms.yandex.ru/u/6a4fcc2549af476d9920b49c"); }
+        }
+    }
+}
+
+// ============================================================
+//  Вкладка «Оценки»
+// ============================================================
+
+// M3 Filter Chip: активный — заливка secondary-container, неактивный — контур
+component FilterChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+
+    height: 34px;
+    border-radius: 17px;
+    background: root.selected
+        ? Theme.secondary-container
+        : (ta.pressed ? Theme.on-surface.transparentize(0.92) : transparent);
+    border-width: root.selected ? 0px : 1px;
+    border-color: Theme.outline;
+    animate background { duration: 120ms; }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        Text {
+            text: root.text;
+            font-size: 13px;
+            font-weight: 600;
+            color: root.selected ? Theme.on-secondary-container : Theme.on-surface-variant;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Микро-карточка одной оценки: дата сверху, крупная цифра снизу
+component MarkMicroCard inherits Rectangle {
+    in property <int> value;
+    in property <string> date;
+
+    width: 46px;
+    height: 56px;
+    border-radius: Theme.radius-s;
+    background: Theme.surface-container-high;
+
+    mc := MarkColor { value: root.value; }
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 2px;
+        alignment: center;
+        Text {
+            text: root.date;
+            font-size: 10px;
+            color: Theme.on-surface-variant;
+            horizontal-alignment: center;
+            overflow: elide;
+            wrap: no-wrap;
+        }
+        Text {
+            text: "\{root.value}";
+            font-size: 21px;
+            font-weight: 800;
+            color: mc.fg;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+// Карточка предмета: имя + бейдж среднего + лента оценок
+component SubjectCard inherits Rectangle {
+    in property <string> subject;
+    in property <string> average;
+    in property <float> average-val;
+    in property <[GradeMark]> marks;
+    callback simulate();
+    callback show-chart();
+
+    // Цвет среднего по диапазонам (не по округлению)
+    property <int> avg-bucket: root.average-val >= 4.6 ? 5
+                             : root.average-val >= 3.6 ? 4
+                             : root.average-val >= 2.6 ? 3
+                             : root.average-val >  0.0 ? 2
+                             : 0;
+
+    height: layout.preferred-height;
+    border-radius: Theme.radius-l;
+    background: Theme.surface-container;
+
+    // Тап по всей карточке — открыть симулятор. Объявлен ДО контента,
+    // чтобы иконки в шапке (симулятор/график) ловили свои нажатия.
+    sc-ta := TouchArea {
+        clicked => { root.simulate(); }
+    }
+
+    layout := VerticalLayout {
+        padding: 14px;
+        spacing: 12px;
+
+        // Шапка: название + бейдж среднего
+        HorizontalLayout {
+            spacing: 10px;
+            // Кнопка симулятора оценок (слева от названия)
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 15px;
+                background: sim-ta.pressed ? Theme.primary.transparentize(0.82) : Theme.surface-container-high;
+                // Иконка «симулятор»: калькулятор с плюсом
+                Path {
+                    width: 18px;
+                    height: 18px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: "M7 3 L17 3 L17 21 L7 21 Z M9.5 7 L14.5 7 M12 11.5 L12 16.5 M9.5 14 L14.5 14";
+                    fill: transparent;
+                    stroke: sim-ta.pressed ? Theme.primary : Theme.on-surface-variant;
+                    stroke-width: 1.8px;
+                }
+                sim-ta := TouchArea {
+                    clicked => { root.simulate(); }
+                }
+            }
+            // Кнопка графика успеваемости (рядом)
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 15px;
+                background: chart-ta.pressed ? Theme.primary.transparentize(0.82) : Theme.surface-container-high;
+                // Иконка линейного графика с точками
+                Path {
+                    width: 18px;
+                    height: 18px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: "M3 3 L3 21 L21 21 M7 14 L11 10 L14 13 L19 7";
+                    fill: transparent;
+                    stroke: chart-ta.pressed ? Theme.primary : Theme.on-surface-variant;
+                    stroke-width: 1.8px;
+                }
+                chart-ta := TouchArea {
+                    clicked => { root.show-chart(); }
+                }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.subject;
+                font-size: 16px;
+                font-weight: 700;
+                color: Theme.on-surface;
+                overflow: elide;
+                wrap: no-wrap;
+                vertical-alignment: center;
+            }
+            // Бейдж среднего балла
+            am := MarkColor { value: root.avg-bucket; }
+            Rectangle {
+                height: 30px;
+                width: badge.preferred-width + 20px;
+                border-radius: 15px;
+                background: am.fg.transparentize(0.86);
+                border-width: 1px;
+                border-color: am.fg.transparentize(0.7);
+                badge := HorizontalLayout {
+                    Text {
+                        text: root.average;
+                        font-size: 15px;
+                        font-weight: 800;
+                        color: am.fg;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // Оценки в несколько строк (перенос по ширине)
+        marks-wrap := Rectangle {
+            property <length> card-w: 46px;
+            property <length> card-h: 56px;
+            property <length> gap: 6px;
+            property <int> raw-cols: ((self.width + self.gap) / (self.card-w + self.gap)).floor();
+            property <int> cols: self.raw-cols < 1 ? 1 : self.raw-cols;
+            property <int> rows: root.marks.length == 0
+                ? 0
+                : ((root.marks.length + self.cols - 1) / self.cols).floor();
+            min-height: self.rows == 0 ? 0px : self.rows * (self.card-h + self.gap) - self.gap;
+            max-height: self.min-height;
+
+            for m[i] in root.marks : MarkMicroCard {
+                property <int> cell-row: (i / marks-wrap.cols).floor();
+                x: (i - self.cell-row * marks-wrap.cols) * (marks-wrap.card-w + marks-wrap.gap);
+                y: self.cell-row * (marks-wrap.card-h + marks-wrap.gap);
+                value: m.value;
+                date: m.date;
+            }
+        }
+    }
+
+}
+
+// Ячейка итоговой оценки: подпись периода + балл (цвет по значению)
+component FinalCell inherits VerticalLayout {
+    in property <string> label;
+    in property <string> average;
+    in property <float> average-val;
+
+    property <int> avg-bucket: root.average-val >= 4.6 ? 5
+                             : root.average-val >= 3.6 ? 4
+                             : root.average-val >= 2.6 ? 3
+                             : root.average-val >  0.0 ? 2
+                             : 0;
+    spacing: 3px;
+
+    Text {
+        text: root.label;
+        font-size: 10px;
+        font-weight: 600;
+        color: Theme.on-surface-variant;
+        horizontal-alignment: center;
+    }
+    mc := MarkColor { value: root.avg-bucket; }
+    Rectangle {
+        height: 34px;
+        border-radius: 10px;
+        background: mc.fg.transparentize(0.86);
+        border-width: 1px;
+        border-color: mc.fg.transparentize(0.7);
+        Text {
+            width: 100%; height: 100%;
+            text: root.average;
+            font-size: 14px;
+            font-weight: 800;
+            color: mc.fg;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// Карточка предмета с итоговыми оценками (четверти + год)
+component SubjectFinalsCard inherits Rectangle {
+    in property <string> subject;
+    in property <[FinalMark]> marks;
+
+    height: fl.preferred-height;
+    border-radius: Theme.radius-l;
+    background: Theme.surface-container;
+
+    fl := VerticalLayout {
+        padding: 14px;
+        spacing: 12px;
+
+        Text {
+            text: root.subject;
+            font-size: 15px;
+            font-weight: 700;
+            color: Theme.on-surface;
+            overflow: elide;
+            wrap: no-wrap;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            for m in root.marks : FinalCell {
+                horizontal-stretch: 1;
+                label: m.label;
+                average: m.average;
+                average-val: m.average-val;
+            }
+        }
+    }
+}
+
+// ============================================================
+//  Симулятор оценок
+// ============================================================
+// Степпер оценки: + добавить / − убрать (существующие и виртуальные)
+component SimStepper inherits Rectangle {
+    in property <int> value;
+    in property <int> net;
+    in property <bool> can-remove: true;
+    callback add();
+    callback remove();
+
+    property <color> fg: mc.fg;
+    mc := MarkColor { value: root.value; }
+
+    height: 96px;
+    border-radius: Theme.radius-m;
+    background: root.fg.transparentize(0.9);
+    border-width: 1px;
+    border-color: root.fg.transparentize(0.6);
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 4px;
+        alignment: center;
+        Text {
+            text: "\{root.value}";
+            font-size: 22px;
+            font-weight: 800;
+            color: root.fg;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: root.net == 0 ? "—" : (root.net > 0 ? "+\{root.net}" : "\{root.net}");
+            font-size: 12px;
+            font-weight: 700;
+            color: root.net == 0 ? Theme.on-surface-variant : root.fg;
+            horizontal-alignment: center;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 30px;
+                border-radius: 8px;
+                opacity: root.can-remove ? 1.0 : 0.4;
+                background: Theme.surface-container-highest;
+                Text {
+                    text: "−";
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: Theme.on-surface;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                minus-ta := TouchArea {
+                    clicked => { root.remove(); }
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 30px;
+                border-radius: 8px;
+                background: root.fg.transparentize(0.8);
+                Text {
+                    text: "+";
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: root.fg;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                plus-ta := TouchArea {
+                    clicked => { root.add(); }
+                }
+            }
+        }
+    }
+}
+
+// Нижний лист симулятора: виртуальные оценки и прогноз среднего
+component SimulatorSheet inherits Rectangle {
+    in property <string> subject;
+    in property <float> real-avg;
+    in property <int> real-count;
+    in property <string> real-avg-str;
+    in property <[GradeMark]> source-marks;
+    callback close();
+
+    property <int> net2;
+    property <int> net3;
+    property <int> net4;
+    property <int> net5;
+
+    // Сколько реальных оценок каждого значения есть (считается при открытии)
+    property <int> exist2;
+    property <int> exist3;
+    property <int> exist4;
+    property <int> exist5;
+
+    property <int> change-count: root.net2 + root.net3 + root.net4 + root.net5;
+    property <float> change-sum: root.net2 * 2 + root.net3 * 3 + root.net4 * 4 + root.net5 * 5;
+    property <int> total-count: root.real-count + root.change-count;
+    property <float> real-sum: root.real-avg * root.real-count;
+    property <float> proj-avg: root.total-count <= 0 ? 0 : (root.real-sum + root.change-sum) / root.total-count;
+    property <int> proj-final: root.total-count <= 0 ? 0
+        : root.proj-avg.floor() + ((root.proj-avg - root.proj-avg.floor()) >= 0.5999 ? 1 : 0);
+    property <int> avg-hundredths: root.total-count <= 0 ? 0 : (root.proj-avg * 100 + 0.5).floor();
+    property <int> avg-int: (root.avg-hundredths / 100).floor();
+    property <int> avg-frac: root.avg-hundredths - root.avg-int * 100;
+    property <string> frac-str: root.avg-frac < 10 ? "0\{root.avg-frac}" : "\{root.avg-frac}";
+    property <string> proj-avg-str: root.total-count == 0 ? "—" : "\{root.avg-int}.\{root.frac-str}";
+
+    background: #000000.transparentize(0.5);
+
+    scrim-ta := TouchArea {
+        clicked => { root.close(); }
+    }
+
+    sheet-bg := Rectangle {
+        width: 100%;
+        height: sheet.preferred-height;
+        y: parent.height - self.height;
+        border-radius: 28px;
+        background: Theme.surface-container;
+
+        inner-ta := TouchArea { }
+        pmc := MarkColor { value: root.proj-final; }
+
+        sheet := VerticalLayout {
+            padding: 20px;
+            spacing: 16px;
+
+            Rectangle {
+                height: 4px;
+                width: 40px;
+                x: (parent.width - self.width) / 2;
+                border-radius: 2px;
+                background: Theme.outline-variant;
+            }
+
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.subject;
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: Theme.on-surface;
+                    overflow: elide;
+                    wrap: no-wrap;
+                    vertical-alignment: center;
+                }
+                Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: close-ta.pressed ? Theme.surface-container-highest : transparent;
+                    Path {
+                        width: 15px;
+                        height: 15px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M6 6 L18 18 M6 18 L18 6";
+                        fill: transparent;
+                        stroke: Theme.on-surface-variant;
+                        stroke-width: 2px;
+                    }
+                    close-ta := TouchArea {
+                        clicked => { root.close(); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 12px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 4px;
+                    Text { text: "Сейчас"; font-size: 12px; font-weight: 600; color: Theme.on-surface-variant; horizontal-alignment: center; }
+                    Text {
+                        text: root.real-count == 0 ? "—" : root.real-avg-str;
+                        font-size: 26px;
+                        font-weight: 800;
+                        color: Theme.on-surface;
+                        horizontal-alignment: center;
+                    }
+                    Text { text: "\{root.real-count} оц."; font-size: 11px; color: Theme.on-surface-variant; horizontal-alignment: center; }
+                }
+                Text { text: "→"; font-size: 22px; color: Theme.on-surface-variant; vertical-alignment: center; }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 4px;
+                    Text { text: "Прогноз"; font-size: 12px; font-weight: 600; color: Theme.on-surface-variant; horizontal-alignment: center; }
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 8px;
+                        Text {
+                            text: root.proj-avg-str;
+                            font-size: 26px;
+                            font-weight: 800;
+                            color: pmc.fg;
+                            vertical-alignment: center;
+                        }
+                        MarkToken {
+                            text: root.proj-final == 0 ? "—" : "\{root.proj-final}";
+                            value: root.proj-final;
+                            size: 38px;
+                            font: 19px;
+                        }
+                    }
+                    Text { text: root.change-count == 0 ? "\{root.total-count} оц." : (root.change-count > 0 ? "\{root.total-count} оц. (+\{root.change-count})" : "\{root.total-count} оц. (\{root.change-count})"); font-size: 11px; color: Theme.on-surface-variant; horizontal-alignment: center; }
+                }
+            }
+
+            // Уже стоящие оценки (для наглядности)
+            if root.source-marks.length > 0 : Text { text: "Уже стоящие оценки"; font-size: 13px; font-weight: 600; color: Theme.on-surface-variant; }
+            if root.source-marks.length > 0 : Rectangle {
+                clip: true;
+                height: exist-grid.min-height > 156px ? 156px : exist-grid.min-height;
+                Flickable {
+                    width: 100%;
+                    height: 100%;
+                    viewport-width: self.width;
+                    viewport-height: exist-grid.min-height;
+                    exist-grid := Rectangle {
+                        width: 100%;
+                        property <length> card-w: 46px;
+                        property <length> card-h: 56px;
+                        property <length> gap: 6px;
+                        property <int> raw-cols: ((self.width + self.gap) / (self.card-w + self.gap)).floor();
+                        property <int> cols: self.raw-cols < 1 ? 1 : self.raw-cols;
+                        property <int> rows: root.source-marks.length == 0 ? 0 : ((root.source-marks.length + self.cols - 1) / self.cols).floor();
+                        min-height: self.rows == 0 ? 0px : self.rows * (self.card-h + self.gap) - self.gap;
+                        for m[i] in root.source-marks : MarkMicroCard {
+                            property <int> cell-row: (i / exist-grid.cols).floor();
+                            x: (i - self.cell-row * exist-grid.cols) * (exist-grid.card-w + exist-grid.gap);
+                            y: self.cell-row * (exist-grid.card-h + exist-grid.gap);
+                            value: m.value;
+                            date: m.date;
+                            init => {
+                                root.exist2 += m.value == 2 ? 1 : 0;
+                                root.exist3 += m.value == 3 ? 1 : 0;
+                                root.exist4 += m.value == 4 ? 1 : 0;
+                                root.exist5 += m.value == 5 ? 1 : 0;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Смоделировать: + добавить оценку, − убрать оценку
+            Text { text: "Смоделировать (+ добавить / − убрать)"; font-size: 13px; font-weight: 600; color: Theme.on-surface-variant; }
+            HorizontalLayout {
+                spacing: 8px;
+                SimStepper { horizontal-stretch: 1; value: 5; net: root.net5; can-remove: root.net5 > -root.exist5; add => { root.net5 += 1; } remove => { root.net5 -= root.net5 > -root.exist5 ? 1 : 0; } }
+                SimStepper { horizontal-stretch: 1; value: 4; net: root.net4; can-remove: root.net4 > -root.exist4; add => { root.net4 += 1; } remove => { root.net4 -= root.net4 > -root.exist4 ? 1 : 0; } }
+                SimStepper { horizontal-stretch: 1; value: 3; net: root.net3; can-remove: root.net3 > -root.exist3; add => { root.net3 += 1; } remove => { root.net3 -= root.net3 > -root.exist3 ? 1 : 0; } }
+                SimStepper { horizontal-stretch: 1; value: 2; net: root.net2; can-remove: root.net2 > -root.exist2; add => { root.net2 += 1; } remove => { root.net2 -= root.net2 > -root.exist2 ? 1 : 0; } }
+            }
+
+            Rectangle {
+                height: 44px;
+                border-radius: 22px;
+                background: reset-ta.pressed ? Theme.surface-container-highest : Theme.surface-container-high;
+                Text {
+                    text: "Сбросить";
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: root.change-count != 0 ? Theme.primary : Theme.on-surface-variant;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                reset-ta := TouchArea {
+                    clicked => { root.net2 = 0; root.net3 = 0; root.net4 = 0; root.net5 = 0; }
+                }
+            }
+
+            Text {
+                text: "Это прикидка: как изменится средний балл, если добавить или убрать оценки. Реальные оценки не меняются.";
+                font-size: 11px;
+                color: Theme.on-surface-variant;
+                wrap: word-wrap;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}
+
+// Овер��ей графика успеваемости за год
+component ChartSheet inherits Rectangle {
+    in property <string> subject;
+    in property <[ChartPoint]> points;
+    in property <[ChartDivider]> dividers;
+    in property <string> line-path;   // ломаная в координатах viewbox 0..1000
+    in property <bool> has-data;
+    in property <bool> loading;
+    callback close();
+
+    background: #000000.transparentize(0.5);
+    scrim-ta := TouchArea { clicked => { root.close(); } }
+
+    sheet-bg := Rectangle {
+        width: 100%;
+        height: 360px;
+        y: parent.height - self.height;
+        border-radius: 28px;
+        background: Theme.surface-container;
+        inner-ta := TouchArea { }
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 16px;
+
+            // Ручка + заголовок
+            Rectangle {
+                height: 4px; width: 40px;
+                x: (parent.width - self.width) / 2;
+                border-radius: 2px;
+                background: Theme.outline-variant;
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.subject;
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: Theme.on-surface;
+                    overflow: elide;
+                    wrap: no-wrap;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "График за год";
+                    font-size: 12px;
+                    color: Theme.on-surface-variant;
+                    vertical-alignment: center;
+                }
+            }
+
+            // --- Область графика ---
+            plot := Rectangle {
+                vertical-stretch: 1;
+                border-radius: Theme.radius-l;
+                background: Theme.surface-container-high;
+                clip: true;
+
+                // Внутренние отступы области рисования
+                property <length> pad-l: 30px;   // под подписи оценок
+                property <length> pad-r: 14px;
+                property <length> pad-t: 14px;
+                property <length> pad-b: 14px;
+                property <length> plot-w: self.width - self.pad-l - self.pad-r;
+                property <length> plot-h: self.height - self.pad-t - self.pad-b;
+                // Доля отступа сверху/снизу (в нормированных координатах),
+                // чтобы линия у оценок 5 и 2 не прижималась к краю и не обрезалась.
+                property <float> pad-frac: 0.12;
+
+                // Горизонтальные линии-уровни 2..5 + подписи слева
+                for lvl[i] in [5, 4, 3, 2] : Rectangle {
+                    // py: 5→0.0, 2→1.0  =>  (5 - lvl)/3
+                    property <float> yy: (5 - lvl) / 3.0;
+                    x: plot.pad-l;
+                    y: plot.pad-t + plot.plot-h * (plot.pad-frac + self.yy * (1 - 2 * plot.pad-frac));
+                    width: plot.plot-w;
+                    height: 1px;
+                    background: Theme.on-surface-variant.transparentize(0.9);
+                    Text {
+                        x: -22px;
+                        y: -8px;
+                        text: "\{lvl}";
+                        font-size: 11px;
+                        color: Theme.on-surface-variant;
+                    }
+                }
+
+                // Пунктирные границы четвертей + подписи
+                for d in root.dividers : Rectangle {
+                    x: plot.pad-l + plot.plot-w * d.px;
+                    y: plot.pad-t;
+                    width: 1px;
+                    height: plot.plot-h;
+                    background: transparent;
+                    // Пунктир: колонка коротких штрихов
+                    for k in 14 : Rectangle {
+                        x: 0;
+                        y: k * (parent.height / 14) + 2px;
+                        width: 1px;
+                        height: (parent.height / 14) - 4px;
+                        background: Theme.outline;
+                    }
+                    Text {
+                        x: 3px;
+                        y: parent.height - self.height - 2px;
+                        text: d.label;
+                        font-size: 9px;
+                        color: Theme.on-surface-variant.transparentize(0.2);
+                    }
+                }
+
+                // Линия графика: рисуем по сегментам между соседними точками
+                // в пиксельных координатах. viewbox совпадает по соотношению
+                // сторон с элементом (= его размер в px), поэтому Path не сжимает
+                // линию по ширине, как это делал квадратный viewbox 0..1000.
+                // pad-frac даёт вертикальный отступ, чтобы 5 и 2 не резались краем.
+                for p[i] in root.points : Path {
+                    x: plot.pad-l;
+                    y: plot.pad-t;
+                    width: plot.plot-w;
+                    height: plot.plot-h;
+                    viewbox-x: 0;
+                    viewbox-y: 0;
+                    viewbox-width: plot.plot-w / 1px;
+                    viewbox-height: plot.plot-h / 1px;
+                    property <float> x1: plot.plot-w / 1px * p.px;
+                    property <float> y1: plot.plot-h / 1px * (plot.pad-frac + p.py * (1 - 2 * plot.pad-frac));
+                    property <float> x2: i < root.points.length - 1 ? plot.plot-w / 1px * root.points[i + 1].px : x1;
+                    property <float> y2: i < root.points.length - 1 ? plot.plot-h / 1px * (plot.pad-frac + root.points[i + 1].py * (1 - 2 * plot.pad-frac)) : y1;
+                    commands: i < root.points.length - 1 ? "M \{x1} \{y1} L \{x2} \{y2}" : "";
+                    fill: transparent;
+                    stroke: Theme.primary;
+                    stroke-width: 2.5px;
+                }
+
+                // Точки-маркеры оценок поверх линии
+                for p in root.points : Rectangle {
+                    mc := MarkColor { value: p.value; }
+                    width: 9px;
+                    height: 9px;
+                    border-radius: 4.5px;
+                    x: plot.pad-l + plot.plot-w * p.px - self.width / 2;
+                    y: plot.pad-t + plot.plot-h * (plot.pad-frac + p.py * (1 - 2 * plot.pad-frac)) - self.height / 2;
+                    background: mc.fg;
+                    border-width: 2px;
+                    border-color: Theme.surface-container-high;
+                }
+
+                // Загрузка / нет данных
+                if root.loading : Spinner {
+                    width: 36px; height: 36px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    indeterminate: true;
+                }
+                if !root.loading && !root.has-data : Text {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    text: "Нет оценок для графика";
+                    font-size: 14px;
+                    color: Theme.on-surface-variant;
+                }
+            }
+        }
+    }
+}
+
+component GradesView inherits Rectangle {
+    in property <[string]> periods;
+    in property <int> selected;
+    in property <[SubjectGrades]> subjects;
+    in property <[SubjectFinals]> finals;
+    in property <int> mode;          // 0 — текущая, 1 — годовая
+    in property <bool> loading;
+    in property <string> error;
+    callback select(int);
+    callback select-mode(int);
+    background: Theme.background;
+
+    // Локальный режим: переключается мгновенно по тапу, а Rust уведомляется
+    // через select-mode() для ленивой загрузки годовых. Инициализируется из
+    // входного mode; после первого тапа управление берёт UI.
+    property <int> active-mode: root.mode;
+
+    // Симулятор оценок
+    property <bool> sim-open: false;
+    property <string> sim-subject;
+    property <float> sim-avg;
+    property <int> sim-count;
+    property <string> sim-avg-str;
+    in-out property <[GradeMark]> sim-marks;
+
+    // График успеваемости за год
+    in property <[ChartPoint]> chart-points;
+    in property <[ChartDivider]> chart-dividers;
+    in property <string> chart-line-path;
+    in property <bool> chart-has-data;
+    in property <bool> chart-loading;
+    property <bool> chart-open: false;
+    property <string> chart-subject;
+    callback open-chart(string);   // Rust грузит годовые оценки предмета
+
+    VerticalLayout {
+        // --- Режимные чипсы: Текущая / Годовая ---
+        HorizontalLayout {
+            height: 52px;
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 12px;
+            spacing: 8px;
+            alignment: center;
+            FilterChip {
+                text: "Текущая";
+                selected: root.active-mode == 0;
+                clicked => { root.active-mode = 0; root.select-mode(0); }
+            }
+            FilterChip {
+                text: "Годовая";
+                selected: root.active-mode == 1;
+                clicked => { root.active-mode = 1; root.select-mode(1); }
+            }
+        }
+
+        // ================= ТЕКУЩАЯ =================
+        if root.active-mode == 0 : VerticalLayout {
+            vertical-stretch: 1;
+
+            // Чипсы четвертей (горизонтальный скролл)
+            Rectangle {
+                height: 58px;
+                clip: true;
+                Flickable {
+                    width: 100%;
+                    height: 100%;
+                    viewport-width: max(self.width, chips.preferred-width);
+                    viewport-height: self.height;
+                    chips := HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        padding-top: 12px;
+                        spacing: 8px;
+                        alignment: start;
+                        for p[i] in root.periods : FilterChip {
+                            text: p;
+                            selected: i == root.selected;
+                            clicked => { root.select(i); }
+                        }
+                    }
+                }
+            }
+
+            // Список предметов
+            Rectangle {
+                vertical-stretch: 1;
+                Flickable {
+                    width: 100%;
+                    height: 100%;
+                    viewport-width: self.width;
+                    viewport-height: col.preferred-height;
+                    col := VerticalLayout {
+                        padding: 12px;
+                        padding-top: 4px;
+                        spacing: 12px;
+                        alignment: start;
+                        for s in root.subjects : SubjectCard {
+                            subject: s.subject;
+                            average: s.average;
+                            average-val: s.average-val;
+                            marks: s.marks;
+                            simulate => {
+                                root.sim-subject = s.subject;
+                                root.sim-avg = s.average-val;
+                                root.sim-count = s.marks.length;
+                                root.sim-avg-str = s.average;
+                                root.sim-marks = s.marks;
+                                root.sim-open = true;
+                            }
+                            show-chart => {
+                                root.chart-subject = s.subject;
+                                root.chart-open = true;
+                                root.open-chart(s.subject);
+                            }
+                        }
+                    }
+                }
+                if root.loading && root.subjects.length == 0 : Spinner {
+                    width: 40px; height: 40px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    indeterminate: true;
+                }
+                if !root.loading && root.subjects.length == 0 : VerticalLayout {
+                    alignment: center;
+                    spacing: 8px;
+                    Text { text: root.error != "" ? "⚠️" : "📊"; font-size: 44px; horizontal-alignment: center; }
+                    Text {
+                        text: root.error != "" ? root.error : "За эту четверть оценок нет";
+                        font-size: 14px; font-weight: 500;
+                        color: Theme.on-surface-variant;
+                        horizontal-alignment: center; wrap: word-wrap;
+                    }
+                }
+            }
+        }
+
+        // ================= ГОДОВАЯ =================
+        if root.active-mode == 1 : Rectangle {
+            vertical-stretch: 1;
+            Flickable {
+                width: 100%;
+                height: 100%;
+                viewport-width: self.width;
+                viewport-height: fcol.preferred-height;
+                fcol := VerticalLayout {
+                    padding: 12px;
+                    padding-top: 4px;
+                    spacing: 12px;
+                    alignment: start;
+                    for s in root.finals : SubjectFinalsCard {
+                        subject: s.subject;
+                        marks: s.marks;
+                    }
+                }
+            }
+            if root.loading && root.finals.length == 0 : Spinner {
+                width: 40px; height: 40px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                indeterminate: true;
+            }
+            if !root.loading && root.finals.length == 0 : VerticalLayout {
+                alignment: center;
+                spacing: 8px;
+                Text { text: root.error != "" ? "⚠️" : "📊"; font-size: 44px; horizontal-alignment: center; }
+                Text {
+                    text: root.error != "" ? root.error : "итоговых оценок пока нет";
+                    font-size: 14px; font-weight: 500;
+                    color: Theme.on-surface-variant;
+                    horizontal-alignment: center; wrap: word-wrap;
+                }
+            }
+        }
+    }
+
+    // --- Оверлей симулятора оценок ---
+    if root.sim-open : SimulatorSheet {
+        width: 100%;
+        height: 100%;
+        subject: root.sim-subject;
+        real-avg: root.sim-avg;
+        real-count: root.sim-count;
+        real-avg-str: root.sim-avg-str;
+        source-marks: root.sim-marks;
+        close => { root.sim-open = false; }
+    }
+
+    // --- Оверлей графика успеваемости ---
+    if root.chart-open : ChartSheet {
+        width: 100%;
+        height: 100%;
+        subject: root.chart-subject;
+        points: root.chart-points;
+        dividers: root.chart-dividers;
+        line-path: root.chart-line-path;
+        has-data: root.chart-has-data;
+        loading: root.chart-loading;
+        close => { root.chart-open = false; }
+    }
+}
+
+// ============================================================
+//  Календарные вычисления (чистая арифметика, без локали)
+// ============================================================
+global CalMath {
+    out property <[string]> months: [
+        "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+        "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+    ];
+    // Неделя с понедельника
+    out property <[string]> weekdays: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+    // Таблица Сакамото для дня недели
+    out property <[int]> sk: [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+
+    // Целочисленный остаток (без опоры на встроенный mod)
+    pure function imod(a: int, b: int) -> int {
+        return a - (a / b).floor() * b;
+    }
+    pure function is-leap(y: int) -> bool {
+        return (root.imod(y, 4) == 0 && root.imod(y, 100) != 0) || root.imod(y, 400) == 0;
+    }
+    public pure function days-in-month(y: int, m: int) -> int {
+        return m == 2 ? (root.is-leap(y) ? 29 : 28)
+             : (m == 4 || m == 6 || m == 9 || m == 11) ? 30
+             : 31;
+    }
+    // День недели 1-го числа, 0 = воскресенье (алгоритм Сакамото)
+    pure function dow-sun(y: int, m: int, d: int) -> int {
+        return root.imod(
+            (m < 3 ? y - 1 : y)
+            + ((m < 3 ? y - 1 : y) / 4).floor()
+            - ((m < 3 ? y - 1 : y) / 100).floor()
+            + ((m < 3 ? y - 1 : y) / 400).floor()
+            + root.sk[m - 1] + d, 7);
+    }
+    // День недели 1-го числа, 0 = понедельник ... 6 = воскресенье
+    public pure function first-dow-mon(y: int, m: int) -> int {
+        return root.imod(root.dow-sun(y, m, 1) + 6, 7);
+    }
+    // День недели даты: 0 = понедельник ... 6 = воскресенье
+    public pure function dow-mon(y: int, m: int, d: int) -> int {
+        return root.imod(root.dow-sun(y, m, d) + 6, 7);
+    }
+    // Сдвиг даты на delta дней (|delta| небольшой, до одного перехода границы месяца).
+    // Возвращает код y*10000 + m*100 + d.
+    public pure function shift-date(y: int, m: int, d: int, delta: int) -> int {
+        return (d + delta) < 1
+            ? ((m == 1 ? y - 1 : y) * 10000 + (m == 1 ? 12 : m - 1) * 100
+               + (d + delta + root.days-in-month(m == 1 ? y - 1 : y, m == 1 ? 12 : m - 1)))
+            : (d + delta) > root.days-in-month(y, m)
+                ? ((m == 12 ? y + 1 : y) * 10000 + (m == 12 ? 1 : m + 1) * 100
+                   + (d + delta - root.days-in-month(y, m)))
+                : (y * 10000 + m * 100 + (d + delta));
+    }
+    public pure function dec-year(code: int) -> int { return (code / 10000).floor(); }
+    public pure function dec-month(code: int) -> int { return root.imod((code / 100).floor(), 100); }
+    public pure function dec-day(code: int) -> int { return root.imod(code, 100); }
+}
+
+// ============================================================
+//  Русский календарь (неделя с понедельника, Material 3)
+// ============================================================
+component RuCalendar inherits Rectangle {
+    in property <int> init-year;
+    in property <int> init-month;
+    in property <int> init-day;
+    callback accepted(int, int, int);   // год, месяц, день
+    callback canceled();
+
+    property <int> view-year: root.init-year;
+    property <int> view-month: root.init-month;
+    property <int> first-dow: CalMath.first-dow-mon(root.view-year, root.view-month);
+    property <int> days: CalMath.days-in-month(root.view-year, root.view-month);
+
+    // Затемняющий фон
+    background: #00000066;
+    // Тап вне карточки — отмена
+    TouchArea { clicked => { root.canceled(); } }
+
+    // Карточка календаря
+    Rectangle {
+        width: min(parent.width - 48px, 360px);
+        height: 456px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: Theme.radius-xl;
+        background: Theme.surface-container-high;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: Theme.shadow;
+        drop-shadow-offset-y: 8px;
+
+        // Блокируем «протекание» тапов на фон
+        TouchArea {}
+
+        // Свайп влево/вправо — смена месяца; тапы по дням проходят к детям
+        month-swipe := SwipeGestureHandler {
+            width: 100%;
+            height: 100%;
+            handle-swipe-left: true;
+            handle-swipe-right: true;
+            swiped => {
+                if (self.current-position.x < self.pressed-position.x) {
+                    // следующий месяц
+                    if (root.view-month == 12) { root.view-month = 1; root.view-year += 1; }
+                    else { root.view-month += 1; }
+                } else {
+                    // предыдущий месяц
+                    if (root.view-month == 1) { root.view-month = 12; root.view-year -= 1; }
+                    else { root.view-month -= 1; }
+                }
+            }
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 6px;
+
+            // --- Заголовок: ‹ Месяц Год › ---
+            HorizontalLayout {
+                height: 44px;
+                spacing: 4px;
+
+                Rectangle {
+                    width: 40px; height: 40px; border-radius: 20px;
+                    background: pm.pressed ? Theme.secondary-container : transparent;
+                    Text { text: "‹"; font-size: 24px; color: Theme.on-surface; horizontal-alignment: center; vertical-alignment: center; }
+                    pm := TouchArea { clicked => {
+                        if (root.view-month == 1) { root.view-month = 12; root.view-year -= 1; }
+                        else { root.view-month -= 1; }
+                    } }
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: "\{CalMath.months[root.view-month - 1]} \{root.view-year}";
+                    font-size: 18px; font-weight: 700; color: Theme.on-surface;
+                    horizontal-alignment: center; vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: 40px; height: 40px; border-radius: 20px;
+                    background: nm.pressed ? Theme.secondary-container : transparent;
+                    Text { text: "›"; font-size: 24px; color: Theme.on-surface; horizontal-alignment: center; vertical-alignment: center; }
+                    nm := TouchArea { clicked => {
+                        if (root.view-month == 12) { root.view-month = 1; root.view-year += 1; }
+                        else { root.view-month += 1; }
+                    } }
+                }
+            }
+
+            // --- Шапка дней недели (Пн ... Вс) ---
+            HorizontalLayout {
+                height: 30px;
+                for wd[idx] in CalMath.weekdays : Rectangle {
+                    horizontal-stretch: 1;
+                    Text {
+                        text: wd;
+                        font-size: 12px; font-weight: 600;
+                        horizontal-alignment: center; vertical-alignment: center;
+                        color: idx >= 5 ? Theme.mark-2 : Theme.on-surface-variant;
+                    }
+                }
+            }
+
+            // --- Сетка 6×7 --- сикссевен
+            for row in 6 : HorizontalLayout {
+                height: 44px;
+                for col in 7 : cell := Rectangle {
+                    horizontal-stretch: 1;
+                    property <int> daynum: row * 7 + col - root.first-dow + 1;
+                    property <bool> valid: cell.daynum >= 1 && cell.daynum <= root.days;
+                    property <bool> is-sel: cell.valid
+                        && cell.daynum == root.init-day
+                        && root.view-month == root.init-month
+                        && root.view-year == root.init-year;
+                    property <bool> weekend: col >= 5;
+
+                    Rectangle {
+                        width: 40px; height: 40px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 20px;
+                        background: cell.is-sel ? Theme.primary
+                                  : (ta.pressed && cell.valid) ? Theme.secondary-container
+                                  : transparent;
+                        Text {
+                            width: 100%; height: 100%;
+                            text: cell.valid ? "\{cell.daynum}" : "";
+                            font-size: 15px;
+                            font-weight: cell.is-sel ? 700 : 500;
+                            color: cell.is-sel ? Theme.on-primary
+                                 : cell.weekend ? Theme.mark-2
+                                 : Theme.on-surface;
+                            horizontal-alignment: center; vertical-alignment: center;
+                        }
+                    }
+                    ta := TouchArea {
+                        clicked => {
+                            if (cell.valid) { root.accepted(root.view-year, root.view-month, cell.daynum); }
+                        }
+                    }
+                }
+            }
+
+            // --- Нижняя строка действий ---
+            HorizontalLayout {
+                height: 44px;
+                alignment: end;
+                Rectangle {
+                    width: 108px; height: 40px; border-radius: 20px;
+                    background: ca.pressed ? Theme.primary.transparentize(0.88) : transparent;
+                    Text { text: "Отмена"; font-size: 15px; font-weight: 600; color: Theme.primary; horizontal-alignment: center; vertical-alignment: center; }
+                    ca := TouchArea { clicked => { root.canceled(); } }
+                }
+            }
+        }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Дневник";
+    preferred-width: 400px;
+    preferred-height: 820px;
+    background: Theme.background;
+
+    in property <[RecentGrade]> recent-grades;
+    in property <bool> logged-in: false;
+    in property <string> full-name: "—";
+    in property <string> school-name: "—";
+    in property <string> school-class: "—";
+    in property <string> guid: "—";
+    in property <string> sid: "—";
+    in property <image> avatar;
+    in property <bool> has-avatar: false;
+    in property <string> current-date: "—";
+    // Числовая текущая дата — для ��нициализации календаря
+    in property <int> cur-year;
+    in property <int> cur-month;
+    in property <int> cur-day;
+    in property <[Lesson]> lessons;
+    in property <string> net-error;
+    in property <bool> loading;
+    in property <string> login-error;
+    in property <bool> logging-in;
+    // --- Проверка обновлений ---
+    in property <bool> update-available: false;
+    in property <string> update-version;
+    in property <string> update-url;
+    private property <bool> update-dismissed: false;
+    // Вкладка «Оценки»
+    in property <[string]> grade-periods;
+    in property <int> grade-selected;
+    in property <[SubjectGrades]> grade-subjects;
+    in property <[SubjectFinals]> grade-finals;
+    in property <int> grade-mode;
+    in property <bool> grades-loading;
+    in property <string> grades-error;
+    // График успеваемости за год
+    in property <[ChartPoint]> chart-points;
+    in property <[ChartDivider]> chart-dividers;
+    in property <string> chart-line-path;
+    in property <bool> chart-has-data;
+    in property <bool> chart-loading;
+    in property <length> top-inset: 28px;
+    in property <length> bottom-inset: 0px;
+
+    callback login-requested();
+    callback prev-day();
+    callback next-day();
+    callback logout();
+    callback pick-avatar();
+    callback open-url(string);
+    callback refresh-day();
+    callback grade-select(int);
+    callback grade-mode-select(int);
+    callback grade-open-chart(string);
+    callback pick-date(int, int, int);   // год, месяц, день
+    callback add-event(string, string, string);
+    callback delete-event(string);
+    callback toggle-homework(string, bool);
+
+    private property <int> tab: 0;
+    private property <bool> cal-open: false;
+
+    if !root.logged-in : LoginScreen {
+        width: 100%;
+        height: 100%;
+        login-error: root.login-error;
+        logging-in: root.logging-in;
+        login-requested => { root.login-requested(); }
+    }
+
+    if root.logged-in : VerticalLayout {
+        spacing: 0px;
+        padding-top: root.top-inset;
+        if root.update-available && !root.update-dismissed : Rectangle {
+            height: 56px;
+            background: Theme.secondary-container;
+
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 8px;
+                spacing: 10px;
+
+                Text {
+                    text: "⬆️";
+                    font-size: 18px;
+                    vertical-alignment: center;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: "Доступна версия " + root.update-version;
+                    font-size: 13px;
+                    font-weight: 500;
+                    color: Theme.on-secondary-container;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                // Кнопка "Скачать"
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        height: 36px;
+                        width: dl.preferred-width + 28px;
+                        border-radius: 18px;
+                        background: dl-ta.pressed ? Theme.primary.darker(0.12) : Theme.primary;
+                        dl := Text {
+                            text: "Скачать";
+                            color: Theme.on-primary;
+                            font-size: 13px;
+                            font-weight: 600;
+                        }
+                        dl-ta := TouchArea {
+                            clicked => {
+                                root.open-url(root.update-url);
+                                root.update-dismissed = true;
+                            }
+                        }
+                    }
+                }
+
+                // Крестик — иконкой, как везде в UI
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 20px;
+                        background: x-ta.pressed ? Theme.secondary-container.darker(0.08) : transparent;
+                        Path {
+                            width: 15px;
+                            height: 15px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: "M6 6 L18 18 M6 18 L18 6";
+                            fill: transparent;
+                            stroke: Theme.on-secondary-container;
+                            stroke-width: 2px;
+                        }
+                        x-ta := TouchArea { clicked => { root.update-dismissed = true; } }
+                    }
+                }
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            if root.tab == 0 : DiaryView {
+                recent-grades: root.recent-grades;
+                lessons: root.lessons;
+                net-error: root.net-error;
+                loading: root.loading;
+                width: 100%; height: 100%;
+                current-date: root.current-date;
+                cur-year: root.cur-year;
+                cur-month: root.cur-month;
+                cur-day: root.cur-day;
+                prev-day => { root.prev-day(); }
+                next-day => { root.next-day(); }
+                open-calendar => { root.cal-open = true; }
+                refresh => { root.refresh-day(); }
+                pick-date(y, m, d) => { root.pick-date(y, m, d); }
+                add-event(n, s, e) => { root.add-event(n, s, e); }
+                delete-event(id) => { root.delete-event(id); }
+                toggle-homework(k, d) => { root.toggle-homework(k, d); }
+            }
+            if root.tab == 1 : GradesView {
+                width: 100%; height: 100%;
+                periods: root.grade-periods;
+                selected: root.grade-selected;
+                subjects: root.grade-subjects;
+                finals: root.grade-finals;
+                mode: root.grade-mode;
+                loading: root.grades-loading;
+                error: root.grades-error;
+                chart-points: root.chart-points;
+                chart-dividers: root.chart-dividers;
+                chart-line-path: root.chart-line-path;
+                chart-has-data: root.chart-has-data;
+                chart-loading: root.chart-loading;
+                select(i) => { root.grade-select(i); }
+                select-mode(i) => { root.grade-mode-select(i); }
+                open-chart(s) => { root.grade-open-chart(s); }
+            }
+            if root.tab == 2 : ProfileView {
+                width: 100%; height: 100%;
+                full-name: root.full-name;
+                school-name: root.school-name;
+                school-class: root.school-class;
+                guid: root.guid;
+                sid: root.sid;
+                avatar: root.avatar;
+                has-avatar: root.has-avatar;
+                logout => { root.logout(); }
+                pick-avatar => { root.pick-avatar(); }
+                open-url(u) => { root.open-url(u); }
+            }
+        }
+
+        // Нижняя навигация (M3 navigation bar) — жёсткие трети
+        Rectangle {
+            height: 72px + root.bottom-inset;
+            background: Theme.nav-bg;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: Theme.shadow;
+            drop-shadow-offset-y: -2px;
+
+            Rectangle {
+                width: 100%;
+                height: 72px;
+                y: 0;
+                NavItem {
+                    x: 0; width: parent.width / 3; height: parent.height;
+                    icon-id: 0; label: "Дневник"; selected: root.tab == 0;
+                    clicked => { root.tab = 0; }
+                }
+                NavItem {
+                    x: parent.width / 3; width: parent.width / 3; height: parent.height;
+                    icon-id: 1; label: "Оценки"; selected: root.tab == 1;
+                    clicked => { root.tab = 1; }
+                }
+                NavItem {
+                    x: parent.width / 3 * 2; width: parent.width / 3; height: parent.height;
+                    icon-id: 2; label: "Профиль"; selected: root.tab == 2;
+                    clicked => { root.tab = 2; }
+                }
+            }
+        }
+    }
+
+    // --- Оверлей русского календаря (поверх всего) ---
+    if root.cal-open : RuCalendar {
+        width: 100%;
+        height: 100%;
+        init-year: root.cur-year;
+        init-month: root.cur-month;
+        init-day: root.cur-day;
+        accepted(y, m, d) => {
+            root.pick-date(y, m, d);
+            root.cal-open = false;
+        }
+        canceled => { root.cal-open = false; }
+    }
+}

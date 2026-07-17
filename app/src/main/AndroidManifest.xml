@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="false"
+        android:label="Бурмалда57"
+        android:hasCode="true"
+        android:theme="@style/Theme.AppCompat.NoActionBar"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round">
+        <!-- LAUNCHER: Slint/Rust через GameActivity -->
+        <activity android:name="android.app.NativeActivity"
+            android:exported="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|screenLayout|density|uiMode">
+        <meta-data android:name="android.app.lib_name" android:value="burmalda57"/>
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.LAUNCHER"/>
+        </intent-filter>
+    </activity>
+    <activity android:name=".EsiaAuthActivity" android:exported="false"/>
+    <activity
+    android:name=".AvatarPickerActivity"
+    android:theme="@android:style/Theme.Translucent.NoTitleBar"
+    android:exported="false" />
+    </application>
+</manifest>
