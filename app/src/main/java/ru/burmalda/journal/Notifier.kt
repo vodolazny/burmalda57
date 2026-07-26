@@ -49,11 +49,16 @@ object Notifier {
             Notification.Builder(context)
         }
 
+        // Adaptive-иконка лаунчера как small icon даёт серый квадрат (а на части
+        // прошивок — краш); используем монохромную, лаунчерная — только фолбэк.
+        val mono = context.resources.getIdentifier(
+            "ic_launcher_monochrome", "mipmap", context.packageName
+        )
         val notification = builder
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))
-            .setSmallIcon(context.applicationInfo.icon)
+            .setSmallIcon(if (mono != 0) mono else context.applicationInfo.icon)
             .setAutoCancel(true)
             .build()
 

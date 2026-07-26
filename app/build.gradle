@@ -5,7 +5,8 @@ plugins {
 
 def keystoreProps = new Properties()
 def keystorePropsFile = rootProject.file("keystore.properties")
-if (keystorePropsFile.exists()) {
+def hasKeystore = keystorePropsFile.exists()
+if (hasKeystore) {
     keystoreProps.load(new FileInputStream(keystorePropsFile))
 }
 
@@ -24,26 +25,28 @@ android {
         }
     }
 
-    buildFeatures {
-        prefab true
-    }
-
-    // signingConfigs ОБЯЗАТЕЛЬНО до buildTypes
+    // signingConfigs ОБЯЗАТЕЛЬНО до buildTypes.
+    // Без keystore.properties конфиг не создаём — иначе file(null) валит
+    // конфигурацию Gradle целиком, включая assembleDebug (см. README).
     signingConfigs {
-        release {
-            storeFile file(keystoreProps["storeFile"])
-            storePassword keystoreProps["storePassword"]
-            keyAlias keystoreProps["keyAlias"]
-            keyPassword keystoreProps["keyPassword"]
-            enableV1Signing true
-            enableV2Signing true
-            enableV3Signing true
+        if (hasKeystore) {
+            release {
+                storeFile file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release   
+            if (hasKeystore) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -76,13 +79,18 @@ tasks.register('cargoNdkBuild', Exec) {
         '-o', jniLibsDir.absolutePath,
         'build', '--release'
 
-    environment 'ANDROID_HOME',              '/opt/android-sdk'
-    environment 'ANDROID_NDK_HOME',          '/opt/android-sdk/ndk/29.0.14206865'
-    environment 'ANDROID_NDK_ROOT',          '/opt/android-sdk/ndk/29.0.14206865'
-    environment 'ANDROID_JAR',               '/opt/android-sdk/platforms/android-34/android.jar'
-    environment 'ANDROID_BUILD_TOOLS_VERSION', '34.0.0'
-    environment 'ANDROID_D8_JAR',            '/opt/android-sdk/build-tools/34.0.0/lib/d8.jar'
-    environment 'JAVA_HOME',                 System.getenv('JAVA_HOME') ?: '/usr/lib/jvm/java-17-openjdk'
+    // Пути берём из окружения (см. README), захардкоженные — только фолбэк
+    def sdkDir = System.getenv('ANDROID_HOME') ?: System.getenv('ANDROID_SDK_ROOT') ?: '/opt/android-sdk'
+    def ndkDir = System.getenv('ANDROID_NDK_HOME') ?: System.getenv('ANDROID_NDK_ROOT') ?: "${sdkDir}/ndk/29.0.14206865"
+    def buildToolsVer = '34.0.0'
+
+    environment 'ANDROID_HOME',                sdkDir
+    environment 'ANDROID_NDK_HOME',            ndkDir
+    environment 'ANDROID_NDK_ROOT',            ndkDir
+    environment 'ANDROID_JAR',                 "${sdkDir}/platforms/android-34/android.jar"
+    environment 'ANDROID_BUILD_TOOLS_VERSION', buildToolsVer
+    environment 'ANDROID_D8_JAR',              "${sdkDir}/build-tools/${buildToolsVer}/lib/d8.jar"
+    environment 'JAVA_HOME',                   System.getenv('JAVA_HOME') ?: '/usr/lib/jvm/java-17-openjdk'
 }
 
 tasks.named('preBuild').configure {

@@ -140,10 +140,8 @@ async fn fetch_diary_day(session: &UserSession, date: &str) -> Result<String, Fe
         FetchError::Offline
     })?;
 
-    log::info!(
-        "diaryday ({}) статус={} байт={} ответ={}",
-        date, status, bytes.len(),String::from_utf8_lossy(&bytes).to_string(),
-    );
+    // Тело ответа не логируем: там оценки и ФИО (PII), которым не место в logcat.
+    log::info!("diaryday ({}) статус={} байт={}", date, status, bytes.len());
 
     // Сервер отвечает, но отказал (часто — заблокирован иностранный IP / VPN)
     if !status.is_success() {
@@ -244,11 +242,16 @@ pub(crate) fn refresh_diary(delta: i64) {
     // Дату в UI обновляем сразу
     apply_date_to_ui(&date);
 
+    // Любое переключение дня делает прежние запросы устаревшими — иначе
+    // зависший ответ за старый день позже перезапишет уже показанный кеш.
+    let my_gen = DIARY_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+
     // 1) Этот день уже качали в текущей сессии — отдаём из кеша, без сети
     if cache::is_fetched(&date) {
         if let Some(raw) = cache::get_raw(&date) {
             apply_lessons_to_ui(parse_diary(&raw), &date);
             apply_net_error(""); // данные есть — ошибку убираем
+            apply_loading(false); // гасим спиннер возможного устаревшего запроса
             return;
         }
     }
@@ -260,8 +263,6 @@ pub(crate) fn refresh_diary(delta: i64) {
     }
 
     // 3) Идём в сеть за свежими данными (один раз за сессию на день)
-    // Каждый запрос получает номер; применяем только самый свежий
-    let my_gen = DIARY_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     apply_loading(true);
 
     runtime().spawn(async move {
@@ -509,9 +510,10 @@ pub(crate) fn refresh_recent_grades() {
             for h in handles {
                 if let Ok((label, ds, raw)) = h.await {
                     if let Some(raw) = raw {
-                        // День реально загружен — кладём в кеш (память),
-                        // потом откроется мгновенно и без интернета
-                        cache::put_mem(&ds, &raw);
+                        // День реально загружен — кладём в кеш (память) без
+                        // пометки «загружен в сессии»: при открытии в дневнике
+                        // день всё равно перезапросится из сети.
+                        cache::put_mem_no_mark(&ds, &raw);
                         for l in parse_diary(&raw) {
                             if l.mark_value > 0 {
                                 recent.push(RecentGrade {

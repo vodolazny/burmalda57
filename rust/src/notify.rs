@@ -97,8 +97,14 @@ async fn poll_once() {
             if !new_marks.is_empty() {
                 notify_new(&new_marks);
             }
-            // Обновляем снимок всегда (в т.ч. если оценки исправили/удалили).
-            save_snapshot(&curr);
+            // Обновляем снимок, но предметы, временно пропавшие из ответа,
+            // переносим из прошлого снимка: иначе после сбойного/неполного
+            // ответа их старые оценки посчитались бы «новыми» → ложные пуши.
+            let mut merged = curr;
+            for (subj, sigs) in prev {
+                merged.entry(subj).or_insert(sigs);
+            }
+            save_snapshot(&merged);
         }
     }
 }

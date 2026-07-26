@@ -62,6 +62,21 @@ pub(crate) fn put_mem(date: &str, raw: &str) {
     }
 }
 
+// Кладём ответ в память БЕЗ пометки «загружен в этой сессии» — для фоновых
+// подгрузок (лента недавних оценок): день откроется мгновенно из кеша, но при
+// заходе в дневник всё равно перезапросится из сети.
+pub(crate) fn put_mem_no_mark(date: &str, raw: &str) {
+    let mut g = STATE.lock().unwrap();
+    if let Some(s) = g.as_mut() {
+        s.days.insert(date.to_string(), raw.to_string());
+    }
+}
+
+// Полный сброс состояния при выходе из аккаунта.
+pub(crate) fn reset() {
+    *STATE.lock().unwrap() = None;
+}
+
 // Сбрасываем пометку «загружен в этой сессии» — заставит перезапросить день из сети.
 // Копия на диске остаётся (для мгновенного показа/оффлайна).
 pub(crate) fn invalidate(date: &str) {

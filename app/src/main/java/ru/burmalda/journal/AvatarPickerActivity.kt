@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Bundle
 import java.io.ByteArrayOutputStream
@@ -74,9 +76,34 @@ class AvatarPickerActivity : Activity() {
         var sample = 1
         while (max(w, h) / sample > MAX_SIZE * 2) sample *= 2
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        val bmp = contentResolver.openInputStream(uri)?.use {
+        val decoded = contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, opts)
         } ?: return null
+
+        // 2.5) EXIF-ориентация: фото с камеры часто хранятся повёрнутыми
+        val rotation = try {
+            contentResolver.openInputStream(uri)?.use {
+                when (ExifInterface(it).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                    else -> 0f
+                }
+            } ?: 0f
+        } catch (_: Exception) {
+            0f
+        }
+        val bmp = if (rotation != 0f) {
+            Bitmap.createBitmap(
+                decoded, 0, 0, decoded.width, decoded.height,
+                Matrix().apply { postRotate(rotation) }, true
+            )
+        } else {
+            decoded
+        }
 
         // 3) точное масштабирование до MAX_SIZE по большей стороне
         val scale = MAX_SIZE.toFloat() / max(bmp.width, bmp.height).toFloat()

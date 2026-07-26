@@ -4,6 +4,7 @@
 use crate::crypto::{load_decrypted_file, save_encrypted_file};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -123,13 +124,17 @@ fn normalize_time(s: &str) -> String {
     format!("{:02}:{:02}", h, m)
 }
 
+// Счётчик для уникальности id: два события, добавленные в одну миллисекунду,
+// иначе получили бы одинаковый id, и delete() удалил бы оба.
+static EVENT_SEQ: AtomicU64 = AtomicU64::new(0);
+
 // Добавить событие в указанный день и сохранить.
 pub(crate) fn add(date: &str, name: &str, start: &str, end: &str) {
-    let id = SystemTime::now()
+    let ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis())
-        .unwrap_or(0)
-        .to_string();
+        .unwrap_or(0);
+    let id = format!("{}-{}", ms, EVENT_SEQ.fetch_add(1, Ordering::Relaxed));
     {
         let mut guard = EVENTS.lock().unwrap();
         let map = guard.get_or_insert_with(HashMap::new);

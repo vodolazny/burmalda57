@@ -170,20 +170,44 @@ fn kek_unwrap(blob: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 // =========================================================================
 //  DEK: получить или создать (защищён KEK'ом Keystore)
 // =========================================================================
-fn get_or_create_dek(storage_path: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
-    let dek_path = format!("{}/{}", storage_path, DEK_FILE);
+// Состояние .dek при чтении. Транзиентные сбои (JNI/Keystore временно
+// недоступен) сюда не попадают — они возвращаются как Err, и .dek
+// НЕ перезаписывается, иначе случайный сбой уничтожил бы все данные.
+enum DekState {
+    Ready([u8; 32]), // успешно развёрнут
+    Absent,          // файла нет (первый запуск)
+    Broken,          // ключ Keystore необратимо потерян / файл повреждён
+}
 
-    if Path::new(&dek_path).exists() {
-        let mut blob = Vec::new();
-        File::open(&dek_path)?.read_to_end(&mut blob)?;
-        if !blob.is_empty() {
-            if let Ok(dek) = kek_unwrap(&blob) {
-                if dek.len() == 32 {
-                    let mut out = [0u8; 32];
-                    out.copy_from_slice(&dek);
-                    return Ok(out);
-                }
-            }
+fn read_dek(storage_path: &str) -> Result<DekState, Box<dyn std::error::Error>> {
+    let dek_path = format!("{}/{}", storage_path, DEK_FILE);
+    if !Path::new(&dek_path).exists() {
+        return Ok(DekState::Absent);
+    }
+    let mut blob = Vec::new();
+    File::open(&dek_path)?.read_to_end(&mut blob)?;
+    if blob.is_empty() {
+        return Ok(DekState::Broken);
+    }
+    let dek = kek_unwrap(&blob)?;
+    // Пустой массив — сентинел из Kotlin: AEADBadTag / KeyPermanentlyInvalidated,
+    // т.е. расшифровать этот DEK не удастся уже никогда.
+    if dek.len() != 32 {
+        return Ok(DekState::Broken);
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&dek);
+    Ok(DekState::Ready(out))
+}
+
+// Путь ЗАПИСИ: при Absent/Broken создаём новый DEK (старые файлы, если и были,
+// уже нечитаемы). Транзиентная ошибка — Err, ничего не трогаем.
+fn get_or_create_dek(storage_path: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+    match read_dek(storage_path)? {
+        DekState::Ready(dek) => return Ok(dek),
+        DekState::Absent => {}
+        DekState::Broken => {
+            log::warn!("DEK нечитаем (ключ Keystore потерян?) — создаём новый");
         }
     }
 
@@ -191,6 +215,7 @@ fn get_or_create_dek(storage_path: &str) -> Result<[u8; 32], Box<dyn std::error:
     let mut dek = [0u8; 32];
     thread_rng().fill_bytes(&mut dek);
 
+    let dek_path = format!("{}/{}", storage_path, DEK_FILE);
     let blob = kek_wrap(&dek)?;
     let mut file = File::create(&dek_path)?;
     file.write_all(&blob)?;
@@ -198,6 +223,14 @@ fn get_or_create_dek(storage_path: &str) -> Result<[u8; 32], Box<dyn std::error:
     restrict_permissions(&dek_path);
 
     Ok(dek)
+}
+
+// Путь ЧТЕНИЯ: никогда не создаёт и не перезаписывает DEK.
+fn get_existing_dek(storage_path: &str) -> Option<[u8; 32]> {
+    match read_dek(storage_path) {
+        Ok(DekState::Ready(dek)) => Some(dek),
+        _ => None,
+    }
 }
 
 // =========================================================================
@@ -266,7 +299,7 @@ pub fn load_decrypted_file(
     let nonce_bytes = &buffer[0..NONCE_LEN];
     let encrypted_data = &buffer[NONCE_LEN..];
 
-    let dek = get_or_create_dek(storage_path).ok()?;
+    let dek = get_existing_dek(storage_path)?;
     let key = derive_key_from_dek(&dek, context_info).ok()?;
     let cipher = Aes256Gcm::new(&key);
     let nonce = Nonce::from_slice(nonce_bytes);
@@ -300,4 +333,9 @@ pub fn save_marks_cache(
 
 pub fn load_marks_cache(storage_path: &str) -> Option<String> {
     load_decrypted_file(storage_path, ".marks_cache", CONTEXT_MARKS_CACHE)
+}
+
+// Удалить зашифрованный файл (например .session и кеши при выходе из аккаунта).
+pub fn delete_encrypted_file(storage_path: &str, filename: &str) {
+    let _ = std::fs::remove_file(format!("{}/{}", storage_path, filename));
 }

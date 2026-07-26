@@ -2,8 +2,10 @@ package com.burmalda57.crypto
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import java.security.KeyStore
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -18,7 +20,7 @@ object KeystoreCrypto {
     // Теперь метод принимает контекст, чтобы проверить наличие StrongBox
     private fun getOrCreateKey(context: Context? = null): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        
+
         if (ks.containsAlias(ALIAS)) {
             val entry = ks.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry
             if (entry != null) {
@@ -66,13 +68,23 @@ object KeystoreCrypto {
         return iv + c.doFinal(plain)
     }
 
+    // Возвращает расшифрованный DEK. Пустой массив — сентинел «восстановление
+    // невозможно» (blob повреждён / ключ Keystore необратимо инвалидирован):
+    // Rust по нему пересоздаёт DEK. Прочие исключения пробрасываются и
+    // трактуются Rust'ом как ВРЕМЕННЫЙ сбой — данные при этом не перезаписываются.
     @JvmStatic
     fun unwrap(blob: ByteArray): ByteArray {
-        if (blob.size < IV_LEN + (TAG_BITS / 8)) throw IllegalArgumentException("Bad encrypted DEK blob")
+        if (blob.size < IV_LEN + (TAG_BITS / 8)) return ByteArray(0)
         val iv = blob.copyOfRange(0, IV_LEN)
         val ct = blob.copyOfRange(IV_LEN, blob.size)
-        val c = Cipher.getInstance(TRANSFORM)
-        c.init(Cipher.DECRYPT_MODE, getOrCreateKey(null), GCMParameterSpec(TAG_BITS, iv))
-        return c.doFinal(ct)
+        return try {
+            val c = Cipher.getInstance(TRANSFORM)
+            c.init(Cipher.DECRYPT_MODE, getOrCreateKey(null), GCMParameterSpec(TAG_BITS, iv))
+            c.doFinal(ct)
+        } catch (e: AEADBadTagException) {
+            ByteArray(0)
+        } catch (e: KeyPermanentlyInvalidatedException) {
+            ByteArray(0)
+        }
     }
 }

@@ -17,7 +17,7 @@ mod profile;
 mod homework;
 
 use std::sync::atomic::AtomicU64;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use slint::ComponentHandle;
 use crate::android::launch_login_activity;
 use crate::bridge::apply_session_to_ui;
@@ -34,6 +34,8 @@ pub(crate) static APP_WEAK: Mutex<Option<slint::Weak<AppWindow>>> = Mutex::new(N
 pub(crate) static SESSION: Mutex<Option<UserSession>> = Mutex::new(None);
 pub(crate) static CURRENT_DATE: Mutex<Option<String>> = Mutex::new(None);
 pub(crate) static DIARY_GEN: AtomicU64 = AtomicU64::new(0);
+// Путь приватного хранилища — задаётся один раз на старте (нужен и для logout)
+pub(crate) static STORAGE: OnceLock<String> = OnceLock::new();
 const REPO: &str = "vodolazny/burmalda57";
 
 #[derive(Deserialize)]
@@ -77,6 +79,7 @@ fn android_main(app: slint::android::AndroidApp) {
         .internal_data_path()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
+    let _ = STORAGE.set(storage_path.clone());
     slint::android::init(app).expect("Не удалось инициализировать Slint Android backend");
 
     let ui = AppWindow::new().expect("Не удалось создать окно");
@@ -115,8 +118,35 @@ fn android_main(app: slint::android::AndroidApp) {
     ui.on_logout(|| {
         *SESSION.lock().unwrap() = None;
         finals::reset();
+        crate::marks::reset();
+        crate::cache::reset();
+        // Удаляем сессию и серверные кеши с диска: «Выйти» должно переживать
+        // перезапуск, а следующий пользователь устройства не должен видеть
+        // чужие оценки. Локальные события/ДЗ/аватар не трогаем.
+        if let Some(path) = STORAGE.get() {
+            for f in [
+                ".session",
+                ".marks_cache",
+                ".grades_cache",
+                ".periods",
+                ".finals_cache",
+                ".grades_notify",
+            ] {
+                crypto::delete_encrypted_file(path, f);
+            }
+        }
         if let Some(ui) = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
             ui.set_logged_in(false);
+            ui.set_full_name("—".into());
+            ui.set_school_name("—".into());
+            ui.set_school_class("—".into());
+            ui.set_lessons(slint::ModelRc::new(slint::VecModel::<Lesson>::default()));
+            ui.set_recent_grades(slint::ModelRc::new(slint::VecModel::<RecentGrade>::default()));
+            ui.set_grade_subjects(slint::ModelRc::new(slint::VecModel::<SubjectGrades>::default()));
+            ui.set_grade_finals(slint::ModelRc::new(slint::VecModel::<SubjectFinals>::default()));
+            ui.set_grade_periods(slint::ModelRc::new(
+                slint::VecModel::<slint::SharedString>::default(),
+            ));
         }
     });
     ui.on_toggle_homework(|key, done| crate::diary::toggle_homework(key.as_str(), done));
@@ -160,7 +190,9 @@ fn android_main(app: slint::android::AndroidApp) {
 fn is_newer(latest: &str, current: &str) -> bool {
     match (semver::Version::parse(latest), semver::Version::parse(current)) {
         (Ok(l), Ok(c)) => l > c,
-        _ => latest != current, // фолбэк, если тег не semver
+        // Не-semver тег не считаем обновлением: иначе любой отличающийся тег
+        // (в т.ч. откат релиза) показывал бы ложный баннер «доступна версия».
+        _ => false,
     }
 }
 

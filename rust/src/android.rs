@@ -18,8 +18,21 @@ pub extern "C" fn Java_ru_burmalda_journal_EsiaAuthActivity_sendTokenToRust(
     token: JString,
     storage_path: JString,
 ) {
-    let raw_token_str: String = env.get_string(&token).expect("token").into();
-    let storage_path: String = env.get_string(&storage_path).expect("storage_path").into();
+    // Не паникуем в JNI-колбэке: с panic = "abort" .expect() уронил бы весь процесс.
+    let raw_token_str: String = match env.get_string(&token) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            log::error!("sendTokenToRust: не удалось прочитать token: {:?}", e);
+            return;
+        }
+    };
+    let storage_path: String = match env.get_string(&storage_path) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            log::error!("sendTokenToRust: не удалось прочитать storage_path: {:?}", e);
+            return;
+        }
+    };
 
     let mut token_str = raw_token_str.clone();
     
@@ -35,30 +48,28 @@ pub extern "C" fn Java_ru_burmalda_journal_EsiaAuthActivity_sendTokenToRust(
 
     let token_str = token_str.trim().trim_matches('"').to_string();
 
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            apply_logging_in(true);
-            apply_login_error("");
+    // Общий рантайм приложения — не создаём новый на каждый вход.
+    crate::net::runtime().spawn(async move {
+        apply_logging_in(true);
+        apply_login_error("");
 
-            match login_and_save(&token_str, &storage_path).await {
-                Ok(session) => {
-                    *SESSION.lock().unwrap() = Some(session.clone());
-                    cache::init(&storage_path);
-                    apply_session_to_ui(&session);
-                    refresh_diary(0);
-                    refresh_recent_grades();
-                    crate::marks::init_marks();
-                    apply_logging_in(false);
-                }
-                Err(e) => {
-                    let msg = e.user_message();
-                    log::error!("Ошибка входа в потоке Rust: {}", msg);
-                    apply_login_error(&msg);
-                    apply_logging_in(false);
-                }
+        match login_and_save(&token_str, &storage_path).await {
+            Ok(session) => {
+                *SESSION.lock().unwrap() = Some(session.clone());
+                cache::init(&storage_path);
+                apply_session_to_ui(&session);
+                refresh_diary(0);
+                refresh_recent_grades();
+                crate::marks::init_marks();
+                apply_logging_in(false);
             }
-        });
+            Err(e) => {
+                let msg = e.user_message();
+                log::error!("Ошибка входа в потоке Rust: {}", msg);
+                apply_login_error(&msg);
+                apply_logging_in(false);
+            }
+        }
     });
 }
 

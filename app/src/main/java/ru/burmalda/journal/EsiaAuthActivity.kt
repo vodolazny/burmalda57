@@ -66,6 +66,11 @@ class EsiaAuthActivity : Activity() {
                     val storagePath = filesDir.absolutePath
 
                     sendTokenToRust(token, storagePath)
+                    // Чистим куки WebView: X1_SSO не должна оставаться в
+                    // незашифрованной cookie-базе, а сессия ЕСИА — тихо
+                    // переживать «Выйти» и авто-логинить следующего пользователя.
+                    CookieManager.getInstance().removeAllCookies(null)
+                    CookieManager.getInstance().flush()
                     finish()
                     return
                 }

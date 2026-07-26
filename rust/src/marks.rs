@@ -442,6 +442,13 @@ pub(crate) fn init_marks() {
     });
 }
 
+// Сброс при выходе из аккаунта — чтобы следующий пользователь не увидел чужое.
+pub(crate) fn reset() {
+    PERIODS.lock().unwrap().clear();
+    MARKS_CACHE.lock().unwrap().clear();
+    MARKS_FETCHED.lock().unwrap().clear();
+}
+
 // Переключение четверти (колбэк из UI)
 pub(crate) fn select_period(idx: i32) {
     if idx < 0 {
@@ -464,11 +471,16 @@ fn load_marks(idx: usize) {
     let to = to_iso(&period.to);
     let range = format!("{from}..{to}");
 
+    // Любое переключение периода делает прежние запросы устаревшими — иначе
+    // зависший ответ за старую четверть позже перезапишет показанный кеш.
+    let my_gen = MARKS_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+
     // 1) Уже качали этот диапазон в текущей сессии — из кеша, без сети
     if is_fetched(&range) {
         if let Some(raw) = cache_get(&range) {
             apply_subjects(parse_marks(&raw));
             apply_grades_error("");
+            apply_grades_loading(false); // гасим спиннер устаревшего запроса
             return;
         }
     }
@@ -482,7 +494,6 @@ fn load_marks(idx: usize) {
 
     // 3) Идём в сеть за свежим (один раз за сессию на диапазон)
     apply_grades_loading(true);
-    let my_gen = MARKS_GEN.fetch_add(1, Ordering::SeqCst) + 1;
 
     runtime().spawn(async move {
         let res = fetch_marks_by_period(&session, &from, &to).await;
