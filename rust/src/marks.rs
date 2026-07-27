@@ -403,6 +403,15 @@ fn format_avg(avg: f64) -> String {
 // ============================================================
 // Загрузка периодов при входе → выбор текущей четверти → её оценки
 pub(crate) fn init_marks() {
+    if crate::DEMO.load(Ordering::SeqCst) {
+        *PERIODS.lock().unwrap() = demo_periods();
+        let names = vec!["1 четверть".to_string(),"2 четверть".into(),"3 четверть".into(),"4 четверть".into()];
+        apply_periods(names, 2);            // выбрана 3-я
+        apply_subjects(demo_subject_marks());
+        apply_grades_error("");
+        return;
+    }
+
     let session = match SESSION.lock().unwrap().clone() {
         Some(s) => s,
         None => return,
@@ -459,6 +468,11 @@ pub(crate) fn select_period(idx: i32) {
 }
 
 fn load_marks(idx: usize) {
+    if crate::DEMO.load(Ordering::SeqCst) {
+        apply_subjects(demo_subject_marks());
+        apply_grades_error("");
+        return;
+    }
     let session = match SESSION.lock().unwrap().clone() {
         Some(s) => s,
         None => return,
@@ -610,6 +624,10 @@ fn short_period_label(name: &str) -> String {
 pub(crate) fn open_chart(subject: String) {
     // Сбрасываем прошлые данные и показываем загрузку
     apply_chart(Vec::new(), Vec::new(), String::new(), false);
+    if crate::DEMO.load(Ordering::Relaxed) {
+        demo_chart(&subject);
+        return;
+    }
     apply_chart_loading(true);
 
     let session = match SESSION.lock().unwrap().clone() {
@@ -744,4 +762,84 @@ fn apply_chart_loading(on: bool) {
             ui.set_chart_loading(on);
         }
     });
+}
+
+// Демо-график: детерминированная «успеваемость» по названию предмета,
+// чтобы у каждого предмета была своя, но стабильная картинка.
+fn demo_chart(subject: &str) {
+    let periods = PERIODS.lock().unwrap().clone();
+    let labels: Vec<String> = if periods.is_empty() {
+        vec!["1".into(), "2".into(), "3".into(), "4".into()]
+    } else {
+        periods.iter().map(|p| p.name.clone()).collect()
+    };
+    let num_q = labels.len();
+
+    let seed: usize = subject.chars().map(|c| c as usize).sum();
+
+    let mut points: Vec<ChartPoint> = Vec::new();
+    let mut dividers: Vec<ChartDivider> = Vec::new();
+
+    for (q, name) in labels.iter().enumerate() {
+        dividers.push(ChartDivider {
+            px: q as f32 / num_q as f32,
+            label: short_period_label(name).into(),
+        });
+
+        let m = 4 + (seed + q * 5) % 3; // 4..6 оценок в четверти
+        for j in 0..m {
+            let value = 3 + ((seed + q * 7 + j * 3) % 3) as i32; // 3..5
+            let within = (j as f32 + 1.0) / (m as f32 + 1.0);
+            let px = (q as f32 + within) / num_q as f32;
+            let mut py = (5.0 - value as f32) / 3.0;
+            if py < 0.0 { py = 0.0; }
+            if py > 1.0 { py = 1.0; }
+            points.push(ChartPoint { px, py, value });
+        }
+    }
+
+    let mut line_path = String::new();
+    for (i, pt) in points.iter().enumerate() {
+        let x = pt.px * 1000.0;
+        let y = pt.py * 1000.0;
+        if i == 0 {
+            line_path.push_str(&format!("M {:.1} {:.1}", x, y));
+        } else {
+            line_path.push_str(&format!(" L {:.1} {:.1}", x, y));
+        }
+    }
+
+    let has_data = !points.is_empty();
+    apply_chart(points, dividers, line_path, has_data);
+    apply_chart_loading(false);
+}
+
+fn demo_periods() -> Vec<Period> {
+    vec![
+        Period { name:"Первая четверть".into(), from:"01.09.2025".into(), to:"27.10.2025".into() },
+        Period { name:"Вторая четверть".into(), from:"06.11.2025".into(), to:"29.12.2025".into() },
+        Period { name:"Третья четверть".into(), from:"12.01.2026".into(), to:"22.03.2026".into() },
+        Period { name:"Четвертая четверть".into(), from:"01.04.2026".into(), to:"31.05.2026".into() },
+    ]
+}
+
+fn demo_subject_marks() -> Vec<SubjectMarks> {
+    let m = |v: i32, w: i32, d: &str| Mark {
+        value: v, weight: w, short_name: v.to_string(),
+        long_name: String::new(), date: d.into(), note: String::new(),
+    };
+    vec![
+        SubjectMarks { subject:"Алгебра".into(), average:4.6,
+            marks: vec![m(5,2,"12.02.2026"), m(4,1,"18.02.2026"), m(5,1,"27.02.2026")] },
+        SubjectMarks { subject:"Русский язык".into(), average:4.2,
+            marks: vec![m(4,1,"11.02.2026"), m(4,2,"20.02.2026"), m(5,1,"28.02.2026")] },
+        SubjectMarks { subject:"Физика".into(), average:3.8,
+            marks: vec![m(3,1,"13.02.2026"), m(4,2,"21.02.2026"), m(4,1,"01.03.2026")] },
+        SubjectMarks { subject:"История".into(), average:5.0,
+            marks: vec![m(5,1,"10.02.2026"), m(5,2,"19.02.2026")] },
+        SubjectMarks { subject:"Английский язык".into(), average:4.5,
+            marks: vec![m(5,1,"12.02.2026"), m(4,1,"22.02.2026")] },
+        SubjectMarks { subject:"Информатика".into(), average:3.5,
+            marks: vec![m(5,1,"12.02.2026"), m(2,1,"19.02.2026")] },
+    ]
 }

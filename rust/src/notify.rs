@@ -51,6 +51,8 @@ pub(crate) fn init() {
         });
     }
 
+    if crate::DEMO.load(std::sync::atomic::Ordering::SeqCst) { return; }
+    
     runtime().spawn(async move {
         tokio::time::sleep(START_DELAY).await;
         loop {

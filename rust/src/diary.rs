@@ -242,6 +242,12 @@ pub(crate) fn refresh_diary(delta: i64) {
     // Дату в UI обновляем сразу
     apply_date_to_ui(&date);
 
+    if crate::DEMO.load(Ordering::SeqCst) {
+    apply_lessons_to_ui(demo_lessons(&date), &date);
+    apply_net_error("");
+    apply_loading(false);
+    return;
+}
     // Любое переключение дня делает прежние запросы устаревшими — иначе
     // зависший ответ за старый день позже перезапишет уже показанный кеш.
     let my_gen = DIARY_GEN.fetch_add(1, Ordering::SeqCst) + 1;
@@ -475,6 +481,16 @@ fn ru_weekday(d: chrono::NaiveDate) -> &'static str {
 }
 
 pub(crate) fn refresh_recent_grades() {
+    if crate::DEMO.load(Ordering::SeqCst) {
+        let recent = demo_recent();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(ui) = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
+                ui.set_recent_grades(ModelRc::from(Rc::new(VecModel::from(recent))));
+            }
+        });
+        return;
+    }
+
     let session = match SESSION.lock().unwrap().clone() {
         Some(s) => s,
         None => return,
@@ -542,4 +558,45 @@ pub(crate) fn refresh_recent_grades() {
             }
         });
     });
+}
+
+fn demo_lessons(date: &str) -> Vec<UiLesson> {
+    use chrono::Datelike;
+    let wd = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+        .map(|d| d.weekday().num_days_from_monday()).unwrap_or(0);
+    if wd >= 5 { return Vec::new(); } // выходные — пусто
+
+    let mk = |n, time: &str, subj: &str, room: &str, teacher: &str,
+              hw: &str, topic: &str, mark: &str, mv: i32| UiLesson {
+        number: n, time: time.into(), subject: subj.into(), room: room.into(),
+        homework: hw.into(), topic: topic.into(), teacher: teacher.into(),
+        mark: mark.into(), mark_value: mv, absence: String::new(),
+        grade_type: if mv > 0 {
+            const KINDS: [&str; 3] = ["Работа на уроке", "Домашняя работа", "Контрольная работа"];
+            KINDS[(n as usize) % KINDS.len()].to_string()
+        } else {
+            String::new()
+        },
+        start: time.split(' ').next().unwrap_or("").into(),
+        is_event: false, event_id: String::new(),
+    };
+    vec![
+        mk(1,"08:30 – 09:15","Алгебра","210","Смирнова А. И.","§14, №312–315","Квадратные уравнения","5",5),
+        mk(2,"09:25 – 10:10","Русский язык","118","Кузнецова О. П.","упр. 245","Причастный оборот","4",4),
+        mk(3,"10:30 – 11:15","Физика","305","Волков С. Н.","§22, задачи 1–4","Закон Ома","",0),
+        mk(4,"11:25 – 12:10","История","201","Бурим А. А.","п. 18, вопросы","Смутное время","4 5",4),
+        mk(5,"12:30 – 13:15","Физкультура","спортзал","Зайцев И. И.","","Баскетбол","",0),
+        mk(6,"13:25 – 14:10","Информатика","209","Торвальдс Л.Б","","Программирование на языке Паскаль","",0),
+    ]
+}
+
+fn demo_recent() -> Vec<RecentGrade> {
+    let g = |subj: &str, mark: &str, mv: i32, date: &str| RecentGrade {
+        subject: subj.into(), mark: mark.into(), mark_val: mv, date: date.into(),
+    };
+    vec![
+        g("Алгебра","5",5,"пн 02.03"), g("История","4 5",4,"пн 02.03"),
+        g("Физика","4",4,"вт 03.03"), g("Русский язык","5",5,"ср 04.03"),
+        g("Английский","4",4,"чт 05.03"),
+    ]
 }

@@ -318,6 +318,7 @@ fn load_finals_disk() {
 // Вызывать при входе в аккаунт: подхватываем офлайн-кеш и сразу рисуем годовую,
 // чтобы вкладка открылась мгновенно (сеть — лениво, при переключении режима).
 pub(crate) fn init_finals() {
+    if crate::DEMO.load(Ordering::SeqCst) { apply_finals(demo_finals()); return; }
     load_finals_disk();
     let cached = FINALS_RAW.lock().unwrap().clone();
     if let Some(raw) = cached {
@@ -335,6 +336,11 @@ pub(crate) fn select_mode(mode: i32) {
 
 // Загрузка итоговых. force=true — принудительно (pull-to-refresh), игнорируя «уже качали».
 pub(crate) fn load_finals(force: bool) {
+    if crate::DEMO.load(Ordering::SeqCst) {
+        apply_finals(demo_finals());
+        apply_grades_error("");
+        return;
+    }
     let session = match SESSION.lock().unwrap().clone() {
         Some(s) => s,
         None => return,
@@ -444,4 +450,24 @@ fn apply_grades_error(msg: &str) {
             ui.set_grades_error(msg.into());
         }
     });
+}
+
+fn demo_finals() -> Vec<SubjectFinalsData> {
+    let c = |label: &str, disp: &str, cv: f64| FinalCellData {
+        label: label.into(), display: disp.into(), color_val: cv,
+    };
+    let row = |name: &str, q: [(&str,f64);5]| SubjectFinalsData {
+        subject: name.into(),
+        marks: vec![
+            c("1", q[0].0, q[0].1), c("2", q[1].0, q[1].1), c("3", q[2].0, q[2].1),
+            c("4", q[3].0, q[3].1), c("Год", q[4].0, q[4].1),
+        ],
+    };
+    vec![
+        row("Алгебра",        [("5",5.0),("4",4.0),("5",5.0),("—",0.0),("—",0.0)]),
+        row("Русский язык",   [("4",4.0),("4",4.0),("4",4.0),("—",0.0),("—",0.0)]),
+        row("Физика",         [("4",4.0),("3",3.0),("4",4.0),("—",0.0),("—",0.0)]),
+        row("История",        [("5",5.0),("5",5.0),("5",5.0),("—",0.0),("—",0.0)]),
+        row("Английский язык",[("5",5.0),("4",4.0),("5",5.0),("—",0.0),("—",0.0)]),
+    ]
 }

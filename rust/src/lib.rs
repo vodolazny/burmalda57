@@ -16,6 +16,7 @@ mod finals;
 mod profile;
 mod homework;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::atomic::AtomicU64;
 use std::sync::{Mutex, OnceLock};
 use slint::ComponentHandle;
@@ -34,6 +35,7 @@ pub(crate) static APP_WEAK: Mutex<Option<slint::Weak<AppWindow>>> = Mutex::new(N
 pub(crate) static SESSION: Mutex<Option<UserSession>> = Mutex::new(None);
 pub(crate) static CURRENT_DATE: Mutex<Option<String>> = Mutex::new(None);
 pub(crate) static DIARY_GEN: AtomicU64 = AtomicU64::new(0);
+pub(crate) static DEMO: AtomicBool = AtomicBool::new(false);
 // Путь приватного хранилища — задаётся один раз на старте (нужен и для logout)
 pub(crate) static STORAGE: OnceLock<String> = OnceLock::new();
 const REPO: &str = "vodolazny/burmalda57";
@@ -114,8 +116,9 @@ fn android_main(app: slint::android::AndroidApp) {
     ui.on_delete_event(|id| {
         crate::diary::delete_event(id.as_str());
     });
-
+    ui.on_demo_requested(|| crate::enter_demo_mode());
     ui.on_logout(|| {
+        crate::DEMO.store(false, Ordering::SeqCst); 
         *SESSION.lock().unwrap() = None;
         finals::reset();
         crate::marks::reset();
@@ -232,5 +235,33 @@ pub fn check_update() {
                 ui.set_update_url(link.into());
             }
         }).ok();
+    });
+}
+
+pub(crate) fn enter_demo_mode() {
+    DEMO.store(true, Ordering::SeqCst);
+
+    let session = UserSession {
+        sid: "demo".into(),
+        user_guid: "demo".into(),
+        apikey: "demo".into(),
+        full_name: "Иван Петров".into(),
+        school_name: "МБОУ СОШ №1 г. Орёл".into(),
+        school_class: "9 «А»".into(),
+    };
+    *SESSION.lock().unwrap() = Some(session.clone());
+
+    // Эти функции увидят DEMO и положат заглушки вместо похода в сеть
+    crate::marks::init_marks();
+    crate::finals::init_finals();
+
+    let s = session.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
+            ui.set_logged_in(true);
+        }
+        apply_session_to_ui(&s);
+        refresh_diary(0);
+        refresh_recent_grades();
     });
 }

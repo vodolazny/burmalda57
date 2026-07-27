@@ -669,6 +669,7 @@ component LoginScreen inherits Rectangle {
     in property <string> login-error;
     in property <bool> logging-in;
     callback login-requested();
+    callback demo-requested();
     background: Theme.background;
 
     VerticalLayout {
@@ -735,7 +736,18 @@ component LoginScreen inherits Rectangle {
             text: root.logging-in ? "Вход…" : "Войти через Госуслуги";
             clicked => { if (!root.logging-in) { root.login-requested(); } }
         }
-
+        if !root.logging-in : TouchArea {
+            height: 36px;
+            clicked => { root.demo-requested(); }
+            Text {
+                text: "Демо режим";
+                font-size: 13px;
+                font-weight: 500;
+                color: Theme.on-surface-variant;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
         // Спиннер во время входа
         if root.logging-in : HorizontalLayout {
             alignment: center;
@@ -1426,7 +1438,7 @@ component ProfileView inherits Rectangle {
                 horizontal-alignment: center;
             }
             Text {
-                text: "сделано на Rust + Slint w love)";
+                text: "made in rust + slint";
                 font-size: 11px; color: Theme.on-surface-variant;
                 horizontal-alignment: center;
             }
@@ -1549,9 +1561,9 @@ component SubjectCard inherits Rectangle {
     callback show-chart();
 
     // Цвет среднего по диапазонам (не по округлению)
-    property <int> avg-bucket: root.average-val >= 4.6 ? 5
-                             : root.average-val >= 3.6 ? 4
-                             : root.average-val >= 2.6 ? 3
+    property <int> avg-bucket: root.average-val >= 4.59 ? 5
+                             : root.average-val >= 3.59 ? 4
+                             : root.average-val >= 2.59 ? 3
                              : root.average-val >  0.0 ? 2
                              : 0;
 
@@ -1677,9 +1689,9 @@ component FinalCell inherits VerticalLayout {
     in property <string> average;
     in property <float> average-val;
 
-    property <int> avg-bucket: root.average-val >= 4.6 ? 5
-                             : root.average-val >= 3.6 ? 4
-                             : root.average-val >= 2.6 ? 3
+    property <int> avg-bucket: root.average-val >= 4.59 ? 5
+                             : root.average-val >= 3.59 ? 4
+                             : root.average-val >= 2.59 ? 3
                              : root.average-val >  0.0 ? 2
                              : 0;
     spacing: 3px;
@@ -2681,6 +2693,7 @@ export component AppWindow inherits Window {
     callback add-event(string, string, string);
     callback delete-event(string);
     callback toggle-homework(string, bool);
+    callback demo-requested();
 
     private property <int> tab: 0;
     private property <bool> cal-open: false;
@@ -2691,6 +2704,7 @@ export component AppWindow inherits Window {
         login-error: root.login-error;
         logging-in: root.logging-in;
         login-requested => { root.login-requested(); }
+        demo-requested => { root.demo-requested(); }
     }
 
     if root.logged-in : VerticalLayout {
