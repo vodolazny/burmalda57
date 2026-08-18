@@ -11,8 +11,8 @@
         android:theme="@style/Theme.AppCompat.NoActionBar"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round">
-        <!-- LAUNCHER: Slint/Rust через GameActivity -->
-        <activity android:name="android.app.NativeActivity"
+        <!-- LAUNCHER: Slint/Rust через MainActivity (наследник NativeActivity) -->
+        <activity android:name=".MainActivity"
             android:exported="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|screenLayout|density|uiMode">
         <meta-data android:name="android.app.lib_name" android:value="burmalda57"/>

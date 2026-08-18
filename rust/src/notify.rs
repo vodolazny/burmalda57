@@ -296,7 +296,7 @@ mod android {
             env.call_static_method(
                 &cls,
                 "requestPermission",
-                "(Landroid/app/Activity;)V",
+                "(Landroid/content/Context;)V",
                 &[JValue::Object(&activity)],
             )?;
             Ok::<(), jni::errors::Error>(())

@@ -5,18 +5,48 @@ use slint::ComponentHandle;
 
 use crate::{AppWindow, Theme};
 
+// Очищает отложенные исключения Java
+fn clear_exception(env: &mut JNIEnv) {
+    if let Ok(true) = env.exception_check() {
+        let _ = env.exception_clear();
+    }
+}
+
 // Читает системный цвет по имени ресурса (android.R.color.<name>)
 fn read_system_color(env: &mut JNIEnv, context: &JObject, name: &str) -> Option<slint::Color> {
-    let r_color = env.find_class("android/R$color").ok()?;
-    let res_id = env.get_static_field(&r_color, name, "I").ok()?.i().ok()?;
-    if res_id == 0 {
-        return None;
-    }
-    let argb = env
-        .call_method(context, "getColor", "(I)I", &[JValue::Int(res_id)])
-        .ok()?
-        .i()
-        .ok()?;
+    let r_color = match env.find_class("android/R$color") {
+        Ok(c) => c,
+        Err(_) => {
+            clear_exception(env);
+            return None;
+        }
+    };
+    let res_id = match env.get_static_field(&r_color, name, "I") {
+        Ok(val) => match val.i() {
+            Ok(id) if id != 0 => id,
+            _ => {
+                clear_exception(env);
+                return None;
+            }
+        },
+        Err(_) => {
+            clear_exception(env);
+            return None;
+        }
+    };
+    let argb = match env.call_method(context, "getColor", "(I)I", &[JValue::Int(res_id)]) {
+        Ok(val) => match val.i() {
+            Ok(c) => c,
+            _ => {
+                clear_exception(env);
+                return None;
+            }
+        },
+        Err(_) => {
+            clear_exception(env);
+            return None;
+        }
+    };
     let a = ((argb >> 24) & 0xFF) as u8;
     let r = ((argb >> 16) & 0xFF) as u8;
     let g = ((argb >> 8) & 0xFF) as u8;
@@ -44,12 +74,14 @@ pub(crate) fn apply_system_theme(ui: &AppWindow) {
         let ui_mode = env.get_field(&conf, "uiMode", "I").ok()?.i().ok()?;
         Some((ui_mode & 0x30) == 0x20)
     })().unwrap_or(false);
+    clear_exception(&mut env);
 
     // Версия SDK (Material You только с API 31)
     let sdk_int = (|| -> Option<i32> {
         let vc = env.find_class("android/os/Build$VERSION").ok()?;
         env.get_static_field(&vc, "SDK_INT", "I").ok()?.i().ok()
     })().unwrap_or(24);
+    clear_exception(&mut env);
 
     let theme = ui.global::<Theme>();
     theme.set_dark(dark);
@@ -93,5 +125,5 @@ pub(crate) fn apply_system_theme(ui: &AppWindow) {
             slint::Color::from_rgb_u8(0xFF, 0xFF, 0xFF)
         });
     }
-    // API < 31 — остаются дефолты Theme (по признаку dark), уже согласованные.
+    clear_exception(&mut env);
 }

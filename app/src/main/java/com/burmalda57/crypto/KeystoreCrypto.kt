@@ -57,21 +57,29 @@ object KeystoreCrypto {
 
     // Метод для явной инициализации ключа при старте приложения
     fun init(context: Context) {
-        getOrCreateKey(context)
+        try {
+            getOrCreateKey(context)
+        } catch (e: Throwable) {
+            android.util.Log.e("burmalda57", "Ошибка инициализации Keystore: ${e.message}")
+        }
     }
 
     @JvmStatic
     fun wrap(plain: ByteArray): ByteArray {
-        val c = Cipher.getInstance(TRANSFORM)
-        c.init(Cipher.ENCRYPT_MODE, getOrCreateKey(null))
-        val iv = c.iv
-        return iv + c.doFinal(plain)
+        return try {
+            val c = Cipher.getInstance(TRANSFORM)
+            c.init(Cipher.ENCRYPT_MODE, getOrCreateKey(null))
+            val iv = c.iv
+            iv + c.doFinal(plain)
+        } catch (e: Throwable) {
+            android.util.Log.e("burmalda57", "wrap failed: ${e.message}")
+            ByteArray(0)
+        }
     }
 
     // Возвращает расшифрованный DEK. Пустой массив — сентинел «восстановление
     // невозможно» (blob повреждён / ключ Keystore необратимо инвалидирован):
-    // Rust по нему пересоздаёт DEK. Прочие исключения пробрасываются и
-    // трактуются Rust'ом как ВРЕМЕННЫЙ сбой — данные при этом не перезаписываются.
+    // Rust по нему пересоздаёт DEK.
     @JvmStatic
     fun unwrap(blob: ByteArray): ByteArray {
         if (blob.size < IV_LEN + (TAG_BITS / 8)) return ByteArray(0)
@@ -81,9 +89,8 @@ object KeystoreCrypto {
             val c = Cipher.getInstance(TRANSFORM)
             c.init(Cipher.DECRYPT_MODE, getOrCreateKey(null), GCMParameterSpec(TAG_BITS, iv))
             c.doFinal(ct)
-        } catch (e: AEADBadTagException) {
-            ByteArray(0)
-        } catch (e: KeyPermanentlyInvalidatedException) {
+        } catch (e: Throwable) {
+            android.util.Log.e("burmalda57", "unwrap failed: ${e.message}")
             ByteArray(0)
         }
     }

@@ -561,6 +561,7 @@ fn apply_subjects(subjects: Vec<SubjectMarks>) {
         if let Some(ui) = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
             let model: Vec<SubjectGrades> = subjects
                 .into_iter()
+                .filter(|s| !s.marks.is_empty())
                 .map(|s| {
                     let marks: Vec<GradeMark> = s
                         .marks

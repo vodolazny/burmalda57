@@ -65,17 +65,42 @@ object Notifier {
         nm.notify(id, notification)
     }
 
-    // Запрос рантайм-разрешения на уведомления (Android 13+). Вызывать с Activity.
+    // Запрос рантайм-разрешения на уведомления (Android 13+).
     @JvmStatic
-    fun requestPermission(activity: Activity) {
+    fun requestPermission(context: Context) {
         if (Build.VERSION.SDK_INT >= 33 &&
-            activity.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED
         ) {
-            activity.requestPermissions(
-                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
-                1001
-            )
+            var act: Activity? = null
+            var ctx: Context? = context
+            while (ctx is android.content.ContextWrapper) {
+                if (ctx is Activity) {
+                    act = ctx
+                    break
+                }
+                ctx = ctx.baseContext
+            }
+            if (act == null && context is Activity) {
+                act = context
+            }
+            try {
+                act?.requestPermissions(
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    1001
+                )
+            } catch (e: Throwable) {
+                android.util.Log.w("burmalda57", "requestPermissions failed: ${e.message}")
+            }
+        }
+    }
+
+    // Показ короткого тоста на UI-потоке
+    @JvmStatic
+    fun showToast(context: Context, text: String) {
+        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        mainHandler.post {
+            android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 }

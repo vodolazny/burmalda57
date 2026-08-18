@@ -406,6 +406,7 @@ fn apply_finals(subjects: Vec<SubjectFinalsData>) {
         if let Some(ui) = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
             let model: Vec<SubjectFinals> = subjects
                 .into_iter()
+                .filter(|s| s.marks.iter().any(|c| c.display != "—" && !c.display.trim().is_empty()))
                 .map(|s| {
                     let marks: Vec<FinalMark> = s
                         .marks

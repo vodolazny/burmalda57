@@ -1,5 +1,3 @@
-import { Spinner } from "std-widgets.slint";
-
 // Проверка времени (реализация в Rust). invalid(s) == true — формат/диапазон неверный.
 // Пустая строка считается корректной. Если Rust не подключит колбэк, по умолчанию false (валидация отключена).
 export global Validate {
@@ -135,6 +133,166 @@ export global Theme {
     out property <length> radius-m: 12px;
     out property <length> radius-l: 12px;
     out property <length> radius-xl: 20px;
+}
+
+// ---------------------------------------------------------------------
+//  Material Design 3 Expressive: LoadingIndicator (Uncontained)
+//  Exact shapes from Material 3 Expressive specification:
+//  - Shape A: 12-lobed Soft Scallop Cookie / Sunny Rosette
+//  - Shape B: 4-lobed Puffy Pillow / Soft Square Blob
+//  - 100% continuous, smooth harmonic morphing + continuous rotation
+// ---------------------------------------------------------------------
+component Md3LoadingIndicator inherits Rectangle {
+    in property <brush> indicator-color: Theme.primary;
+
+    min-width: 36px;
+    min-height: 36px;
+    clip: false;
+
+    path := Path {
+        private property <float> cx: 50;
+        private property <float> cy: 50;
+
+        private property <float> t: animation-tick() / 1ms;
+
+        private property <float> rot: mod(t * 0.13, 360.0);
+
+        private property <float> morph: 0.5 - 0.5 * cos(t / 2200.0 * 360deg);
+
+        private property <float> scale: 1.0 + 0.04 * sin(t / 1100.0 * 360deg);
+
+        private property <float> a12: 2.6 * (1.0 - morph);
+        private property <float> a4:  7.2 * morph;
+        private property <float> r-base: 34.0 * scale;
+
+     
+        private property <float> r0:  r-base + a4 * cos(0deg)   + a12 * cos(0deg);
+        private property <float> x0:  cx + r0 * cos(rot * 1deg + 0deg);
+        private property <float> y0:  cy + r0 * sin(rot * 1deg + 0deg);
+
+        private property <float> r1:  r-base + a4 * cos(60deg)  + a12 * cos(180deg);
+        private property <float> x1:  cx + r1 * cos(rot * 1deg + 15deg);
+        private property <float> y1:  cy + r1 * sin(rot * 1deg + 15deg);
+
+        private property <float> r2:  r-base + a4 * cos(120deg) + a12 * cos(360deg);
+        private property <float> x2:  cx + r2 * cos(rot * 1deg + 30deg);
+        private property <float> y2:  cy + r2 * sin(rot * 1deg + 30deg);
+
+        private property <float> r3:  r-base + a4 * cos(180deg) + a12 * cos(540deg);
+        private property <float> x3:  cx + r3 * cos(rot * 1deg + 45deg);
+        private property <float> y3:  cy + r3 * sin(rot * 1deg + 45deg);
+
+        private property <float> r4:  r-base + a4 * cos(240deg) + a12 * cos(720deg);
+        private property <float> x4:  cx + r4 * cos(rot * 1deg + 60deg);
+        private property <float> y4:  cy + r4 * sin(rot * 1deg + 60deg);
+
+        private property <float> r5:  r-base + a4 * cos(300deg) + a12 * cos(900deg);
+        private property <float> x5:  cx + r5 * cos(rot * 1deg + 75deg);
+        private property <float> y5:  cy + r5 * sin(rot * 1deg + 75deg);
+
+        private property <float> r6:  r-base + a4 * cos(360deg) + a12 * cos(1080deg);
+        private property <float> x6:  cx + r6 * cos(rot * 1deg + 90deg);
+        private property <float> y6:  cy + r6 * sin(rot * 1deg + 90deg);
+
+        private property <float> r7:  r-base + a4 * cos(420deg) + a12 * cos(1260deg);
+        private property <float> x7:  cx + r7 * cos(rot * 1deg + 105deg);
+        private property <float> y7:  cy + r7 * sin(rot * 1deg + 105deg);
+
+        private property <float> r8:  r-base + a4 * cos(480deg) + a12 * cos(1440deg);
+        private property <float> x8:  cx + r8 * cos(rot * 1deg + 120deg);
+        private property <float> y8:  cy + r8 * sin(rot * 1deg + 120deg);
+
+        private property <float> r9:  r-base + a4 * cos(540deg) + a12 * cos(1620deg);
+        private property <float> x9:  cx + r9 * cos(rot * 1deg + 135deg);
+        private property <float> y9:  cy + r9 * sin(rot * 1deg + 135deg);
+
+        private property <float> r10: r-base + a4 * cos(600deg) + a12 * cos(1800deg);
+        private property <float> x10: cx + r10 * cos(rot * 1deg + 150deg);
+        private property <float> y10: cy + r10 * sin(rot * 1deg + 150deg);
+
+        private property <float> r11: r-base + a4 * cos(660deg) + a12 * cos(1980deg);
+        private property <float> x11: cx + r11 * cos(rot * 1deg + 165deg);
+        private property <float> y11: cy + r11 * sin(rot * 1deg + 165deg);
+
+        private property <float> r12: r-base + a4 * cos(720deg) + a12 * cos(2160deg);
+        private property <float> x12: cx + r12 * cos(rot * 1deg + 180deg);
+        private property <float> y12: cy + r12 * sin(rot * 1deg + 180deg);
+
+        private property <float> r13: r-base + a4 * cos(780deg) + a12 * cos(2340deg);
+        private property <float> x13: cx + r13 * cos(rot * 1deg + 195deg);
+        private property <float> y13: cy + r13 * sin(rot * 1deg + 195deg);
+
+        private property <float> r14: r-base + a4 * cos(840deg) + a12 * cos(2520deg);
+        private property <float> x14: cx + r14 * cos(rot * 1deg + 210deg);
+        private property <float> y14: cy + r14 * sin(rot * 1deg + 210deg);
+
+        private property <float> r15: r-base + a4 * cos(900deg) + a12 * cos(2700deg);
+        private property <float> x15: cx + r15 * cos(rot * 1deg + 225deg);
+        private property <float> y15: cy + r15 * sin(rot * 1deg + 225deg);
+
+        private property <float> r16: r-base + a4 * cos(960deg) + a12 * cos(2880deg);
+        private property <float> x16: cx + r16 * cos(rot * 1deg + 240deg);
+        private property <float> y16: cy + r16 * sin(rot * 1deg + 240deg);
+
+        private property <float> r17: r-base + a4 * cos(1020deg) + a12 * cos(3060deg);
+        private property <float> x17: cx + r17 * cos(rot * 1deg + 255deg);
+        private property <float> y17: cy + r17 * sin(rot * 1deg + 255deg);
+
+        private property <float> r18: r-base + a4 * cos(1080deg) + a12 * cos(3240deg);
+        private property <float> x18: cx + r18 * cos(rot * 1deg + 270deg);
+        private property <float> y18: cy + r18 * sin(rot * 1deg + 270deg);
+
+        private property <float> r19: r-base + a4 * cos(1140deg) + a12 * cos(3420deg);
+        private property <float> x19: cx + r19 * cos(rot * 1deg + 285deg);
+        private property <float> y19: cy + r19 * sin(rot * 1deg + 285deg);
+
+        private property <float> r20: r-base + a4 * cos(1200deg) + a12 * cos(3600deg);
+        private property <float> x20: cx + r20 * cos(rot * 1deg + 300deg);
+        private property <float> y20: cy + r20 * sin(rot * 1deg + 300deg);
+
+        private property <float> r21: r-base + a4 * cos(1260deg) + a12 * cos(3780deg);
+        private property <float> x21: cx + r21 * cos(rot * 1deg + 315deg);
+        private property <float> y21: cy + r21 * sin(rot * 1deg + 315deg);
+
+        private property <float> r22: r-base + a4 * cos(1320deg) + a12 * cos(3960deg);
+        private property <float> x22: cx + r22 * cos(rot * 1deg + 330deg);
+        private property <float> y22: cy + r22 * sin(rot * 1deg + 330deg);
+
+        private property <float> r23: r-base + a4 * cos(1380deg) + a12 * cos(4140deg);
+        private property <float> x23: cx + r23 * cos(rot * 1deg + 345deg);
+        private property <float> y23: cy + r23 * sin(rot * 1deg + 345deg);
+
+        viewbox-width: 100;
+        viewbox-height: 100;
+        width: 100%;
+        height: 100%;
+        fill: root.indicator-color;
+
+        MoveTo { x: x0; y: y0; }
+        LineTo { x: x1; y: y1; }
+        LineTo { x: x2; y: y2; }
+        LineTo { x: x3; y: y3; }
+        LineTo { x: x4; y: y4; }
+        LineTo { x: x5; y: y5; }
+        LineTo { x: x6; y: y6; }
+        LineTo { x: x7; y: y7; }
+        LineTo { x: x8; y: y8; }
+        LineTo { x: x9; y: y9; }
+        LineTo { x: x10; y: y10; }
+        LineTo { x: x11; y: y11; }
+        LineTo { x: x12; y: y12; }
+        LineTo { x: x13; y: y13; }
+        LineTo { x: x14; y: y14; }
+        LineTo { x: x15; y: y15; }
+        LineTo { x: x16; y: y16; }
+        LineTo { x: x17; y: y17; }
+        LineTo { x: x18; y: y18; }
+        LineTo { x: x19; y: y19; }
+        LineTo { x: x20; y: y20; }
+        LineTo { x: x21; y: y21; }
+        LineTo { x: x22; y: y22; }
+        LineTo { x: x23; y: y23; }
+    }
 }
 
 // Цвет оценки по её значению (общий помощник)
@@ -760,7 +918,15 @@ component LoginScreen inherits Rectangle {
             err := HorizontalLayout {
                 padding: 12px;
                 spacing: 8px;
-                Text { text: "⚠️"; font-size: 16px; vertical-alignment: center; }
+                VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 18px; height: 18px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z";
+                        fill: Theme.on-error-container;
+                    }
+                }
                 Text {
                     horizontal-stretch: 1;
                     text: root.login-error;
@@ -773,13 +939,11 @@ component LoginScreen inherits Rectangle {
             }
         }
 
-        // Спиннер во время входа
         if root.logging-in : HorizontalLayout {
             alignment: center;
             padding-top: 16px;
-            Spinner {
-                width: 28px; height: 28px;
-                indeterminate: true;
+            Md3LoadingIndicator {
+                width: 36px; height: 36px;
             }
         }
 
@@ -1127,7 +1291,7 @@ component DiaryView inherits Rectangle {
     callback add-event(string, string, string);
     callback delete-event(string);
     callback toggle-homework(string, bool);
-    private property <bool> event-open: false;
+    in-out property <bool> event-open: false;
     background: Theme.background;
 
     // Лента показывается только при наличии оценок
@@ -1246,10 +1410,14 @@ component DiaryView inherits Rectangle {
                 padding-right: 16px;
                 spacing: 10px;
 
-                Text {
-                    text: "⚠️";
-                    font-size: 18px;
-                    vertical-alignment: center;
+                VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 20px; height: 20px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z";
+                        fill: Theme.on-error-container;
+                    }
                 }
                 Text {
                     horizontal-stretch: 1;
@@ -1375,34 +1543,36 @@ component DiaryView inherits Rectangle {
                 }
             }
 
-            // Крутящийся спиннер загрузки
             if root.loading : Rectangle {
-                y: 15px;
-                height: 44px; width: 44px;
+                y: 16px;
+                height: 46px; width: 46px;
                 x: (parent.width - self.width) / 2;
-                border-radius: 22px;
+                border-radius: 23px;
                 background: Theme.surface-container-high;
-                drop-shadow-blur: 8px;
+                drop-shadow-blur: 10px;
                 drop-shadow-color: Theme.shadow;
-                Spinner {
-                    width: 26px;
-                    height: 26px;
+                Md3LoadingIndicator {
+                    width: 30px;
+                    height: 30px;
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
-                    indeterminate: true;
                 }
             }
 
             // Пустой день
             if root.lessons.length == 0 && root.net-error == "" : VerticalLayout {
                 alignment: center;
-                spacing: 10px;
+                spacing: 12px;
                 opacity: root.list-fade;
                 
-                Text {
-                    text: "🌤";
-                    font-size: 48px;
-                    horizontal-alignment: center;
+                HorizontalLayout {
+                    alignment: center;
+                    Path {
+                        width: 52px; height: 52px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: "M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM4 10.5H1v2h3v-2zm9-9.95h-2V3.5h2V.55zm7.45 3.91l-1.41-1.41-1.79 1.79 1.41 1.41 1.79-1.79zm-3.21 13.7l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM20 10.5v2h3v-2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm-1 4h2v2.95h-2V19.5zm-7.45-.96l1.41 1.41 1.79-1.8-1.41-1.41-1.79 1.8z";
+                        fill: Theme.on-surface-variant.transparentize(0.2);
+                    }
                 }
                 Text {
                     text: "В этот день уроков нет";
@@ -1490,9 +1660,17 @@ component ProfileView inherits Rectangle {
                                 width: 100%; height: 100%;
                                 image-fit: cover;
                             }
-                            if !root.has-avatar : Text {
-                                text: "👤"; font-size: 44px;
-                                horizontal-alignment: center; vertical-alignment: center;
+                            if !root.has-avatar : VerticalLayout {
+                                alignment: center;
+                                HorizontalLayout {
+                                    alignment: center;
+                                    Path {
+                                        width: 48px; height: 48px;
+                                        viewbox-width: 24; viewbox-height: 24;
+                                        commands: "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z";
+                                        fill: #ffffff;
+                                    }
+                                }
                             }
                         }
                         // Бейдж-камера поверх, в правом нижнем углу
@@ -1502,7 +1680,18 @@ component ProfileView inherits Rectangle {
                             border-width: 2px; border-color: Theme.surface-container;
                             x: parent.width - self.width;
                             y: parent.height - self.height;
-                            Text { text: "📷"; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
+                            VerticalLayout {
+                                alignment: center;
+                                HorizontalLayout {
+                                    alignment: center;
+                                    Path {
+                                        width: 14px; height: 14px;
+                                        viewbox-width: 24; viewbox-height: 24;
+                                        commands: "M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z";
+                                        fill: Theme.on-surface;
+                                    }
+                                }
+                            }
                         }
                         TouchArea { clicked => { root.pick-avatar(); } }
                     }
@@ -1669,12 +1858,6 @@ component SubjectCard inherits Rectangle {
     border-radius: Theme.radius-l;
     background: Theme.surface-container;
 
-    // Тап по всей карточке — открыть симулятор. Объявлен ДО контента,
-    // чтобы иконки в шапке (симулятор/график) ловили свои нажатия.
-    sc-ta := TouchArea {
-        clicked => { root.simulate(); }
-    }
-
     layout := VerticalLayout {
         padding: 14px;
         spacing: 12px;
@@ -1682,16 +1865,19 @@ component SubjectCard inherits Rectangle {
         // Шапка: название + бейдж среднего
         HorizontalLayout {
             spacing: 10px;
-            // Кнопка симулятора оценок (слева от названия)
+
+            // Кнопка симулятора оценок 
             Rectangle {
                 width: 30px;
                 height: 30px;
                 border-radius: 15px;
                 background: sim-ta.pressed ? Theme.primary.transparentize(0.82) : Theme.surface-container-high;
-                // Иконка «симулятор»: калькулятор с плюсом
+                // Иконка симулятор: калькулятор с плюсом
                 Path {
                     width: 18px;
                     height: 18px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
                     viewbox-width: 24;
                     viewbox-height: 24;
                     commands: "M7 3 L17 3 L17 21 L7 21 Z M9.5 7 L14.5 7 M12 11.5 L12 16.5 M9.5 14 L14.5 14";
@@ -1703,7 +1889,7 @@ component SubjectCard inherits Rectangle {
                     clicked => { root.simulate(); }
                 }
             }
-            // Кнопка графика успеваемости (рядом)
+            // Кнопка графика успеваемости 
             Rectangle {
                 width: 30px;
                 height: 30px;
@@ -1713,6 +1899,8 @@ component SubjectCard inherits Rectangle {
                 Path {
                     width: 18px;
                     height: 18px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
                     viewbox-width: 24;
                     viewbox-height: 24;
                     commands: "M3 3 L3 21 L21 21 M7 14 L11 10 L14 13 L19 7";
@@ -2041,7 +2229,15 @@ component SimulatorSheet inherits Rectangle {
                     }
                     Text { text: "\{root.real-count} оц."; font-size: 11px; color: Theme.on-surface-variant; horizontal-alignment: center; }
                 }
-                Text { text: "→"; font-size: 22px; color: Theme.on-surface-variant; vertical-alignment: center; }
+                VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 20px; height: 20px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: "M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z";
+                        fill: Theme.on-surface-variant;
+                    }
+                }
                 VerticalLayout {
                     horizontal-stretch: 1;
                     spacing: 4px;
@@ -2290,12 +2486,10 @@ component ChartSheet inherits Rectangle {
                     border-color: Theme.surface-container-high;
                 }
 
-                // Загрузка / нет данных
-                if root.loading : Spinner {
-                    width: 36px; height: 36px;
+                if root.loading : Md3LoadingIndicator {
+                    width: 42px; height: 42px;
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
-                    indeterminate: true;
                 }
                 if !root.loading && !root.has-data : Text {
                     x: (parent.width - self.width) / 2;
@@ -2327,7 +2521,7 @@ component GradesView inherits Rectangle {
     property <int> active-mode: root.mode;
 
     // Симулятор оценок
-    property <bool> sim-open: false;
+    in-out property <bool> sim-open: false;
     property <string> sim-subject;
     property <float> sim-avg;
     property <int> sim-count;
@@ -2340,7 +2534,7 @@ component GradesView inherits Rectangle {
     in property <string> chart-line-path;
     in property <bool> chart-has-data;
     in property <bool> chart-loading;
-    property <bool> chart-open: false;
+    in-out property <bool> chart-open: false;
     property <string> chart-subject;
     callback open-chart(string);   // Rust грузит годовые оценки предмета
 
@@ -2427,16 +2621,25 @@ component GradesView inherits Rectangle {
                         }
                     }
                 }
-                if root.loading && root.subjects.length == 0 : Spinner {
-                    width: 40px; height: 40px;
+                if root.loading && root.subjects.length == 0 : Md3LoadingIndicator {
+                    width: 46px; height: 46px;
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
-                    indeterminate: true;
                 }
                 if !root.loading && root.subjects.length == 0 : VerticalLayout {
                     alignment: center;
-                    spacing: 8px;
-                    Text { text: root.error != "" ? "⚠️" : "📊"; font-size: 44px; horizontal-alignment: center; }
+                    spacing: 12px;
+                    HorizontalLayout {
+                        alignment: center;
+                        Path {
+                            width: 52px; height: 52px;
+                            viewbox-width: 24; viewbox-height: 24;
+                            commands: root.error != ""
+                                ? "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
+                                : "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-5h2v5zm4 0h-2v-8h2v8zm4 0h-2v-3h2v3z";
+                            fill: root.error != "" ? Theme.error : Theme.on-surface-variant.transparentize(0.3);
+                        }
+                    }
                     Text {
                         text: root.error != "" ? root.error : "За эту четверть оценок нет";
                         font-size: 14px; font-weight: 500;
@@ -2466,18 +2669,27 @@ component GradesView inherits Rectangle {
                     }
                 }
             }
-            if root.loading && root.finals.length == 0 : Spinner {
-                width: 40px; height: 40px;
+            if root.loading && root.finals.length == 0 : Md3LoadingIndicator {
+                width: 46px; height: 46px;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
-                indeterminate: true;
             }
             if !root.loading && root.finals.length == 0 : VerticalLayout {
                 alignment: center;
-                spacing: 8px;
-                Text { text: root.error != "" ? "⚠️" : "📊"; font-size: 44px; horizontal-alignment: center; }
+                spacing: 12px;
+                HorizontalLayout {
+                    alignment: center;
+                    Path {
+                        width: 52px; height: 52px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: root.error != ""
+                            ? "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
+                            : "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-5h2v5zm4 0h-2v-8h2v8zm4 0h-2v-3h2v3z";
+                        fill: root.error != "" ? Theme.error : Theme.on-surface-variant.transparentize(0.3);
+                    }
+                }
                 Text {
-                    text: root.error != "" ? root.error : "итоговых оценок пока нет";
+                    text: root.error != "" ? root.error : "Итоговых оценок пока нет";
                     font-size: 14px; font-weight: 500;
                     color: Theme.on-surface-variant;
                     horizontal-alignment: center; wrap: word-wrap;
@@ -2571,7 +2783,7 @@ global CalMath {
 }
 
 // ============================================================
-//  Русский календарь (неделя с понедельника, Material 3)
+//  календарь выбора даты (год, месяц, день)
 // ============================================================
 component RuCalendar inherits Rectangle {
     in property <int> init-year;
@@ -2635,7 +2847,18 @@ component RuCalendar inherits Rectangle {
                 Rectangle {
                     width: 40px; height: 40px; border-radius: 20px;
                     background: pm.pressed ? Theme.secondary-container : transparent;
-                    Text { text: "‹"; font-size: 24px; color: Theme.on-surface; horizontal-alignment: center; vertical-alignment: center; }
+                    VerticalLayout {
+                        alignment: center;
+                        HorizontalLayout {
+                            alignment: center;
+                            Path {
+                                width: 20px; height: 20px;
+                                viewbox-width: 24; viewbox-height: 24;
+                                commands: "M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z";
+                                fill: Theme.on-surface;
+                            }
+                        }
+                    }
                     pm := TouchArea { clicked => {
                         if (root.view-month == 1) { root.view-month = 12; root.view-year -= 1; }
                         else { root.view-month -= 1; }
@@ -2652,7 +2875,18 @@ component RuCalendar inherits Rectangle {
                 Rectangle {
                     width: 40px; height: 40px; border-radius: 20px;
                     background: nm.pressed ? Theme.secondary-container : transparent;
-                    Text { text: "›"; font-size: 24px; color: Theme.on-surface; horizontal-alignment: center; vertical-alignment: center; }
+                    VerticalLayout {
+                        alignment: center;
+                        HorizontalLayout {
+                            alignment: center;
+                            Path {
+                                width: 20px; height: 20px;
+                                viewbox-width: 24; viewbox-height: 24;
+                                commands: "M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z";
+                                fill: Theme.on-surface;
+                            }
+                        }
+                    }
                     nm := TouchArea { clicked => {
                         if (root.view-month == 12) { root.view-month = 1; root.view-year += 1; }
                         else { root.view-month += 1; }
@@ -2792,9 +3026,23 @@ export component AppWindow inherits Window {
     callback delete-event(string);
     callback toggle-homework(string, bool);
     callback demo-requested();
+    callback tab-changed(int);
+    callback cal-open-changed(bool);
+    callback event-open-changed(bool);
+    callback chart-open-changed(bool);
+    callback sim-open-changed(bool);
 
-    private property <int> tab: 0;
-    private property <bool> cal-open: false;
+    in-out property <int> tab: 0;
+    in-out property <bool> cal-open: false;
+    in-out property <bool> event-open: false;
+    in-out property <bool> sim-open: false;
+    in-out property <bool> chart-open: false;
+
+    changed tab => { root.tab-changed(root.tab); }
+    changed cal-open => { root.cal-open-changed(root.cal-open); }
+    changed event-open => { root.event-open-changed(root.event-open); }
+    changed chart-open => { root.chart-open-changed(root.chart-open); }
+    changed sim-open => { root.sim-open-changed(root.sim-open); }
 
     if !root.logged-in : LoginScreen {
         width: 100%;
@@ -2817,10 +3065,14 @@ export component AppWindow inherits Window {
                 padding-right: 8px;
                 spacing: 10px;
 
-                Text {
-                    text: "⬆️";
-                    font-size: 18px;
-                    vertical-alignment: center;
+                VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 22px; height: 22px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: "M16 18v2H8v-2h8zM11 7.83l-3.41 3.41L6.17 9.83 12 4l5.83 5.83-1.41 1.41L13 7.83V16h-2V7.83z";
+                        fill: Theme.on-secondary-container;
+                    }
                 }
                 Text {
                     horizontal-stretch: 1;
@@ -2883,6 +3135,7 @@ export component AppWindow inherits Window {
         Rectangle {
             vertical-stretch: 1;
             if root.tab == 0 : DiaryView {
+                event-open <=> root.event-open;
                 recent-grades: root.recent-grades;
                 lessons: root.lessons;
                 net-error: root.net-error;
@@ -2902,6 +3155,8 @@ export component AppWindow inherits Window {
                 toggle-homework(k, d) => { root.toggle-homework(k, d); }
             }
             if root.tab == 1 : GradesView {
+                sim-open <=> root.sim-open;
+                chart-open <=> root.chart-open;
                 width: 100%; height: 100%;
                 periods: root.grade-periods;
                 selected: root.grade-selected;

@@ -1,9 +1,9 @@
 [target.x86_64-linux-android]
 linker = "/opt/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android26-clang"
-rustflags = ["-C", "link-arg=-Wl,--export-dynamic"] 
+rustflags = ["-C", "link-arg=-Wl,--export-dynamic", "-C", "link-arg=-Wl,-z,max-page-size=16384"] 
 ar = "/opt/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
 [target.aarch64-linux-android]
-rustflags = ["-C", "link-arg=-Wl,--export-dynamic"]
+rustflags = ["-C", "link-arg=-Wl,--export-dynamic", "-C", "link-arg=-Wl,-z,max-page-size=16384"]
 [env]
 CC_x86_64_linux_android = "/opt/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android26-clang"
 CXX_x86_64_linux_android = "/opt/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android26-clang++"

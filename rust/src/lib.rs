@@ -117,6 +117,11 @@ fn android_main(app: slint::android::AndroidApp) {
         crate::diary::delete_event(id.as_str());
     });
     ui.on_demo_requested(|| crate::enter_demo_mode());
+    ui.on_tab_changed(|t| android::CURRENT_TAB.store(t, Ordering::SeqCst));
+    ui.on_cal_open_changed(|o| android::CAL_OPEN.store(o, Ordering::SeqCst));
+    ui.on_event_open_changed(|o| android::EVENT_OPEN.store(o, Ordering::SeqCst));
+    ui.on_chart_open_changed(|o| android::CHART_OPEN.store(o, Ordering::SeqCst));
+    ui.on_sim_open_changed(|o| android::SIM_OPEN.store(o, Ordering::SeqCst));
     ui.on_logout(|| {
         crate::DEMO.store(false, Ordering::SeqCst); 
         *SESSION.lock().unwrap() = None;

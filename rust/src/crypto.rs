@@ -88,7 +88,12 @@ mod keystore {
         let ctx = ndk_context::android_context();
         let vm = unsafe { JavaVM::from_raw(ctx.vm().cast())? };
         let mut env = vm.attach_current_thread()?;
-        Ok(f(&mut env)?)
+        let res = f(&mut env);
+        if let Ok(true) = env.exception_check() {
+            let _ = env.exception_describe();
+            let _ = env.exception_clear();
+        }
+        Ok(res?)
     }
 
     fn call(method: &str, input: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
