@@ -54,6 +54,42 @@
 
 ## 📦 Сборка из исходников
 
+### Быстрый способ — скрипт сборки
+
+В корне репозитория лежат `build.sh` (Linux/macOS) и `build.ps1` (Windows). Они сами:
+- проверяют и при необходимости ставят (спрашивая подтверждение на каждый шаг) Rust, Android-таргет, `cargo-ndk`, JDK 17, Android SDK/NDK, build-tools
+- если `ANDROID_HOME` вообще не задан — скачивают Android SDK с нуля
+- собирают APK
+- в конце предлагают установить его на подключённое по ADB устройство
+
+**Linux / macOS:**
+```bash
+chmod +x build.sh
+./build.sh              # debug-сборка (по умолчанию)
+./build.sh --release    # release-сборка (нужен keystore.properties, см. ниже)
+./build.sh --yes        # не спрашивать подтверждения на установку зависимостей
+```
+
+**Windows (PowerShell):**
+```powershell
+# разово, если скрипт скачан не через git clone, а как zip-архив:
+Unblock-File -Path .\build.ps1
+
+.\build.ps1              # debug-сборка
+.\build.ps1 -Release      # release-сборка
+.\build.ps1 -Yes           # без подтверждений
+```
+Если PowerShell ругается на политику выполнения — либо разово:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+```
+либо один раз для своего пользователя:
+```powershell
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+Готовый APK лежит в `app/build/outputs/apk/debug/` или `app/build/outputs/apk/release/` — то же самое, что и при ручной сборке ниже.
+
 ### Требования
 
 - **Rust** (stable) + Android-таргет:
