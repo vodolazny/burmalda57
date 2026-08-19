@@ -2,11 +2,21 @@
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::JNIEnv;
 
-use crate::bridge::{apply_login_error, apply_logging_in, apply_session_to_ui};
+use crate::bridge::{apply_login_error, apply_logging_in, apply_session_to_ui, show_child_picker_for_login};
 use crate::cache;
 use crate::diary::{refresh_diary, refresh_recent_grades};
-use crate::login::login_and_save;
+use crate::login::{login_and_save, LoginOutcome};
 use crate::SESSION;
+
+#[derive(Clone, Debug)]
+pub(crate) struct PendingParentLogin {
+    pub sid: String,
+    pub storage_path: String,
+    pub children: Vec<crate::crypto::ChildInfo>,
+    pub parent_name: String,
+}
+
+pub(crate) static PENDING_PARENT_LOGIN: std::sync::Mutex<Option<PendingParentLogin>> = std::sync::Mutex::new(None);
 
 // ============================================================
 //  JNI: Kotlin отдаёт токен после WebView-логина
@@ -54,7 +64,8 @@ pub extern "C" fn Java_ru_burmalda_journal_EsiaAuthActivity_sendTokenToRust(
         apply_login_error("");
 
         match login_and_save(&token_str, &storage_path).await {
-            Ok(session) => {
+            Ok(LoginOutcome::Success(session)) => {
+                *PENDING_PARENT_LOGIN.lock().unwrap() = None;
                 *SESSION.lock().unwrap() = Some(session.clone());
                 cache::init(&storage_path);
                 apply_session_to_ui(&session);
@@ -63,6 +74,15 @@ pub extern "C" fn Java_ru_burmalda_journal_EsiaAuthActivity_sendTokenToRust(
                 crate::marks::init_marks();
                 crate::finals::init_finals();
                 apply_logging_in(false);
+            }
+            Ok(LoginOutcome::NeedChildSelection { sid, storage_path, children, parent_name }) => {
+                *PENDING_PARENT_LOGIN.lock().unwrap() = Some(PendingParentLogin {
+                    sid,
+                    storage_path,
+                    children: children.clone(),
+                    parent_name,
+                });
+                show_child_picker_for_login(&children);
             }
             Err(e) => {
                 let msg = e.user_message();
@@ -170,6 +190,7 @@ pub(crate) static CAL_OPEN: AtomicBool = AtomicBool::new(false);
 pub(crate) static EVENT_OPEN: AtomicBool = AtomicBool::new(false);
 pub(crate) static CHART_OPEN: AtomicBool = AtomicBool::new(false);
 pub(crate) static SIM_OPEN: AtomicBool = AtomicBool::new(false);
+pub(crate) static CHILD_SELECT_OPEN: AtomicBool = AtomicBool::new(false);
 pub(crate) static CURRENT_TAB: AtomicI32 = AtomicI32::new(0);
 
 // ============================================================
@@ -180,6 +201,17 @@ pub extern "C" fn Java_ru_burmalda_journal_MainActivity_nativeOnBackPressed(
     _env: jni::JNIEnv,
     _class: jni::objects::JClass,
 ) -> jni::sys::jboolean {
+    if CHILD_SELECT_OPEN.load(Ordering::SeqCst) {
+        CHILD_SELECT_OPEN.store(false, Ordering::SeqCst);
+        let _ = slint::invoke_from_event_loop(|| {
+            if let Some(ui) = crate::APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
+                if !ui.get_child_select_is_login() {
+                    ui.set_child_select_open(false);
+                }
+            }
+        });
+        return 1;
+    }
     if CAL_OPEN.load(Ordering::SeqCst) {
         CAL_OPEN.store(false, Ordering::SeqCst);
         let _ = slint::invoke_from_event_loop(|| {

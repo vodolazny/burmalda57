@@ -110,6 +110,154 @@ fn android_main(app: slint::android::AndroidApp) {
     ui.on_open_url(|u| profile::open_url(u.as_str()));
     ui.on_pick_avatar(|| profile::pick_avatar());
 
+    ui.on_open_child_select(|| {
+        if let Some(ui) = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
+            ui.set_child_select_is_login(false);
+            ui.set_child_select_open(true);
+        }
+    });
+    ui.on_close_child_select(|| {
+        if let Some(ui) = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
+            ui.set_child_select_open(false);
+        }
+    });
+    ui.on_select_child(|guid| {
+        let guid_str = guid.to_string();
+
+        // 1. Если был выбор при входе (Pending login)
+        if let Some(pending) = android::PENDING_PARENT_LOGIN.lock().unwrap().take() {
+            crate::bridge::apply_logging_in(true);
+            crate::net::runtime().spawn(async move {
+                match crate::login::complete_child_login(
+                    &pending.sid,
+                    &pending.storage_path,
+                    &guid_str,
+                    pending.parent_name,
+                    pending.children,
+                ).await {
+                    Ok(session) => {
+                        *SESSION.lock().unwrap() = Some(session.clone());
+                        cache::init(&pending.storage_path);
+                        slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
+                                ui.set_child_select_open(false);
+                            }
+                            apply_session_to_ui(&session);
+                            refresh_diary(0);
+                            refresh_recent_grades();
+                            crate::marks::init_marks();
+                            crate::finals::init_finals();
+                            crate::bridge::apply_logging_in(false);
+                        }).ok();
+                    }
+                    Err(e) => {
+                        let msg = e.user_message();
+                        crate::bridge::apply_login_error(&msg);
+                        crate::bridge::apply_logging_in(false);
+                    }
+                }
+            });
+            return;
+        }
+
+        // 2. Демо-режим: переключение ученика
+        if crate::DEMO.load(Ordering::SeqCst) {
+            let mut session_guard = SESSION.lock().unwrap();
+            if let Some(session) = session_guard.as_mut() {
+                if let Some(child) = session.children.iter().find(|c| c.guid == guid_str).cloned() {
+                    session.user_guid = child.guid.clone();
+                    session.full_name = child.full_name.clone();
+                    session.school_name = child.school_name.clone();
+                    session.school_class = child.school_class.clone();
+                    let updated_session = session.clone();
+                    drop(session_guard);
+
+                    finals::reset();
+                    crate::marks::reset();
+                    crate::cache::reset();
+
+                    crate::marks::init_marks();
+                    crate::finals::init_finals();
+
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
+                            ui.set_child_select_open(false);
+                        }
+                        apply_session_to_ui(&updated_session);
+                        refresh_diary(0);
+                        refresh_recent_grades();
+                    }).ok();
+                    android::show_toast(&format!("Выбран ученик: {}", child.full_name));
+                }
+            }
+            return;
+        }
+
+        // 3. Переключение ребёнка в профиле
+        let current_session = SESSION.lock().unwrap().clone();
+        if let Some(mut session) = current_session {
+            if session.user_guid == guid_str {
+                if let Some(ui) = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
+                    ui.set_child_select_open(false);
+                }
+                return;
+            }
+
+            if let Some(child) = session.children.iter().find(|c| c.guid == guid_str).cloned() {
+                let storage_path = STORAGE.get().cloned().unwrap_or_default();
+                crate::net::runtime().spawn(async move {
+                    match crate::login::init_session(&session.sid, &guid_str).await {
+                        Ok(new_key) => {
+                            session.user_guid = child.guid.clone();
+                            session.apikey = new_key;
+                            session.full_name = child.full_name.clone();
+                            session.school_name = child.school_name.clone();
+                            session.school_class = child.school_class.clone();
+
+                            if !storage_path.is_empty() {
+                                let _ = crypto::save_session(&storage_path, &session);
+                                for f in [
+                                    ".marks_cache",
+                                    ".grades_cache",
+                                    ".periods",
+                                    ".finals_cache",
+                                    ".grades_notify",
+                                ] {
+                                    crypto::delete_encrypted_file(&storage_path, f);
+                                }
+                            }
+
+                            *SESSION.lock().unwrap() = Some(session.clone());
+
+                            finals::reset();
+                            crate::marks::reset();
+                            crate::cache::reset();
+
+                            let session_clone = session.clone();
+                            let child_name = child.full_name.clone();
+                            slint::invoke_from_event_loop(move || {
+                                if let Some(ui) = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
+                                    ui.set_child_select_open(false);
+                                }
+                                apply_session_to_ui(&session_clone);
+                                refresh_diary(0);
+                                refresh_recent_grades();
+                                crate::marks::init_marks();
+                                crate::finals::init_finals();
+                            }).ok();
+
+                            android::show_toast(&format!("Выбран ученик: {}", child_name));
+                        }
+                        Err(e) => {
+                            log::error!("Не удалось переключить ученика: {:?}", e.user_message());
+                            android::show_toast("Не удалось переключить ученика. Проверьте сеть.");
+                        }
+                    }
+                });
+            }
+        }
+    });
+
     ui.on_add_event(|name, start, end| {
         crate::diary::add_event(name.as_str(), start.as_str(), end.as_str());
     });
@@ -122,6 +270,7 @@ fn android_main(app: slint::android::AndroidApp) {
     ui.on_event_open_changed(|o| android::EVENT_OPEN.store(o, Ordering::SeqCst));
     ui.on_chart_open_changed(|o| android::CHART_OPEN.store(o, Ordering::SeqCst));
     ui.on_sim_open_changed(|o| android::SIM_OPEN.store(o, Ordering::SeqCst));
+    ui.on_child_select_open_changed(|o| android::CHILD_SELECT_OPEN.store(o, Ordering::SeqCst));
     ui.on_logout(|| {
         crate::DEMO.store(false, Ordering::SeqCst); 
         *SESSION.lock().unwrap() = None;
@@ -148,6 +297,10 @@ fn android_main(app: slint::android::AndroidApp) {
             ui.set_full_name("—".into());
             ui.set_school_name("—".into());
             ui.set_school_class("—".into());
+            ui.set_is_parent(false);
+            ui.set_parent_name("".into());
+            ui.set_current_child_guid("".into());
+            ui.set_children_list(slint::ModelRc::new(slint::VecModel::<ChildItem>::default()));
             ui.set_lessons(slint::ModelRc::new(slint::VecModel::<Lesson>::default()));
             ui.set_recent_grades(slint::ModelRc::new(slint::VecModel::<RecentGrade>::default()));
             ui.set_grade_subjects(slint::ModelRc::new(slint::VecModel::<SubjectGrades>::default()));
@@ -246,13 +399,31 @@ pub fn check_update() {
 pub(crate) fn enter_demo_mode() {
     DEMO.store(true, Ordering::SeqCst);
 
+    let children = vec![
+        crate::crypto::ChildInfo {
+            guid: "demo_child_1".into(),
+            full_name: "Иван Петров".into(),
+            school_name: "МБОУ СОШ №1 г. Орёл".into(),
+            school_class: "9 «А»".into(),
+        },
+        crate::crypto::ChildInfo {
+            guid: "demo_child_2".into(),
+            full_name: "Анна Петрова".into(),
+            school_name: "МБОУ СОШ №1 г. Орёл".into(),
+            school_class: "5 «Б»".into(),
+        },
+    ];
+
     let session = UserSession {
         sid: "demo".into(),
-        user_guid: "demo".into(),
+        user_guid: "demo_child_1".into(),
         apikey: "demo".into(),
         full_name: "Иван Петров".into(),
         school_name: "МБОУ СОШ №1 г. Орёл".into(),
         school_class: "9 «А»".into(),
+        is_parent: true,
+        parent_name: "Юлия Петрова".into(),
+        children,
     };
     *SESSION.lock().unwrap() = Some(session.clone());
 

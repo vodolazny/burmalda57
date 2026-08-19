@@ -25,14 +25,28 @@ pub const CONTEXT_MARKS_CACHE: &[u8] = b"burmalda57_marks_cache_context_v1";
 const DEK_FILE: &str = ".dek";
 const NONCE_LEN: usize = 12;
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ChildInfo {
+    pub guid: String,
+    pub full_name: String,
+    pub school_name: String,
+    pub school_class: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserSession {
     pub sid: String,          // кука X1_SSO (нужна для дальнейших запросов)
-    pub user_guid: String,    // PARTICIPANT.SYS_GUID — твой гуид
+    pub user_guid: String,    // PARTICIPANT.SYS_GUID — твой гуид (активного ученика)
     pub apikey: String,       // Сессионный apikey
     pub full_name: String,    // ФИО: SURNAME NAME SECONDNAME
     pub school_name: String,  // SCHOOL.NAME — школа
     pub school_class: String, // GRADE.NAME — класс (напр. "8Г")
+    #[serde(default)]
+    pub is_parent: bool,      // true если аккаунт родителя
+    #[serde(default)]
+    pub parent_name: String,  // ФИО родителя
+    #[serde(default)]
+    pub children: Vec<ChildInfo>, // Список детей (для родителя)
 }
 
 // =========================================================================

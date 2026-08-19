@@ -21,6 +21,14 @@ export struct Lesson {
     hw-done: bool,
     hw-key: string,
 }
+
+export struct ChildItem {
+    guid: string,
+    name: string,
+    school-class: string,
+    school-name: string,
+    selected: bool,
+}
 // Недавняя оценка (из последних дней) — с датой выставления
 export struct RecentGrade {
     subject: string,
@@ -1630,9 +1638,13 @@ component ProfileView inherits Rectangle {
     in property <string> sid;
     in property <image> avatar;
     in property <bool> has-avatar;
+    in property <bool> is-parent: false;
+    in property <string> parent-name: "";
+    in property <[ChildItem]> children-list;
     callback logout();
     callback pick-avatar();
     callback open-url(string);
+    callback open-child-select();
     background: Theme.background;
 
     VerticalLayout {
@@ -1704,6 +1716,77 @@ component ProfileView inherits Rectangle {
                 }
                 Rectangle { height: 1px; background: Theme.outline-variant; }
                 InfoRow { label: "Школа"; value: root.school-name; }
+                if root.is-parent && root.parent-name != "" : InfoRow { label: "Родитель"; value: root.parent-name; }
+            }
+        }
+
+        // Кнопка выбора ребёнка (для родителей с несколькими детьми)
+        if root.is-parent && root.children-list.length > 1 : Rectangle {
+            border-radius: Theme.radius-l;
+            background: Theme.surface-container;
+            height: child-btn-layout.preferred-height + 24px;
+
+            child-btn-layout := VerticalLayout {
+                padding: 14px;
+                spacing: 6px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: 20px;
+                            background: Theme.primary-container;
+                            Path {
+                                width: 22px;
+                                height: 22px;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                viewbox-width: 24;
+                                viewbox-height: 24;
+                                commands: "M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z";
+                                fill: Theme.on-primary-container;
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: "Выбрать ребёнка";
+                            font-size: 15px;
+                            font-weight: 600;
+                            color: Theme.on-surface;
+                        }
+                        Text {
+                            text: "Текущий: " + root.full-name;
+                            font-size: 12px;
+                            color: Theme.on-surface-variant;
+                            overflow: elide;
+                            wrap: no-wrap;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        Path {
+                            width: 20px;
+                            height: 20px;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: "M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z";
+                            fill: Theme.on-surface-variant;
+                        }
+                    }
+                }
+            }
+
+            TouchArea {
+                clicked => { root.open-child-select(); }
             }
         }
 
@@ -2964,6 +3047,210 @@ component RuCalendar inherits Rectangle {
     }
 }
 
+component ChildItemCard inherits Rectangle {
+    in property <string> name;
+    in property <string> school-class;
+    in property <string> school-name;
+    in property <bool> selected;
+    callback clicked();
+
+    height: card-layout.preferred-height + 20px;
+    border-radius: Theme.radius-m;
+    background: root.selected ? Theme.primary-container.transparentize(0.4) : (ta.pressed ? Theme.surface-container-highest : Theme.surface-container-high);
+    border-width: root.selected ? 2px : 1px;
+    border-color: root.selected ? Theme.primary : Theme.outline-variant;
+    animate background { duration: 120ms; }
+
+    card-layout := HorizontalLayout {
+        padding: 12px;
+        spacing: 12px;
+
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                background: root.selected ? Theme.primary : Theme.secondary-container;
+                Path {
+                    width: 22px;
+                    height: 22px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z";
+                    fill: root.selected ? Theme.on-primary : Theme.on-secondary-container;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+
+            Text {
+                text: root.name;
+                font-size: 15px;
+                font-weight: 700;
+                color: Theme.on-surface;
+                overflow: elide;
+                wrap: no-wrap;
+            }
+            if root.school-class != "" : Text {
+                text: root.school-class + " класс";
+                font-size: 12px;
+                font-weight: 600;
+                color: Theme.primary;
+                overflow: elide;
+                wrap: no-wrap;
+            }
+            if root.school-name != "" : Text {
+                text: root.school-name;
+                font-size: 11px;
+                color: Theme.on-surface-variant;
+                overflow: elide;
+                wrap: no-wrap;
+            }
+        }
+
+        if root.selected : VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: 14px;
+                background: Theme.primary;
+                Path {
+                    width: 16px;
+                    height: 16px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z";
+                    fill: Theme.on-primary;
+                }
+            }
+        }
+    }
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component ChildSelectOverlay inherits Rectangle {
+    in property <[ChildItem]> items;
+    in property <bool> is-login: false;
+    callback select-child(string);
+    callback close();
+
+    background: #00000088;
+
+    TouchArea {
+        clicked => {
+            if (!root.is-login) {
+                root.close();
+            }
+        }
+    }
+
+    Rectangle {
+        width: min(root.width - 32px, 380px);
+        height: min(card-content.preferred-height, root.height - 48px);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: Theme.radius-xl;
+        background: Theme.surface-container;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: Theme.shadow;
+        clip: true;
+
+        card-content := VerticalLayout {
+            padding: 20px;
+            spacing: 14px;
+
+            HorizontalLayout {
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    Text {
+                        text: "Выберите ребёнка";
+                        font-size: 20px;
+                        font-weight: 700;
+                        color: Theme.on-surface;
+                    }
+                    Text {
+                        text: "Дневник и оценки выбранного ученика";
+                        font-size: 12px;
+                        color: Theme.on-surface-variant;
+                    }
+                }
+
+                if !root.is-login : VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 18px;
+                        background: close-ta.pressed ? Theme.secondary-container : transparent;
+                        Path {
+                            width: 14px;
+                            height: 14px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: "M6 6 L18 18 M6 18 L18 6";
+                            fill: transparent;
+                            stroke: Theme.on-surface-variant;
+                            stroke-width: 2px;
+                        }
+                        close-ta := TouchArea {
+                            clicked => { root.close(); }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { height: 1px; background: Theme.outline-variant; }
+
+            Flickable {
+                viewport-height: children-list.preferred-height;
+                preferred-height: min(children-list.preferred-height, 300px);
+                max-height: 300px;
+
+                children-list := VerticalLayout {
+                    spacing: 8px;
+                    padding-bottom: 4px;
+
+                    for item in root.items : ChildItemCard {
+                        name: item.name;
+                        school-class: item.school-class;
+                        school-name: item.school-name;
+                        selected: item.selected;
+                        clicked => {
+                            root.select-child(item.guid);
+                        }
+                    }
+                }
+            }
+
+            if !root.is-login : HorizontalLayout {
+                alignment: end;
+                MaterialButton {
+                    text: "Отмена";
+                    filled: false;
+                    clicked => { root.close(); }
+                }
+            }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "Дневник";
     preferred-width: 400px;
@@ -2980,7 +3267,7 @@ export component AppWindow inherits Window {
     in property <image> avatar;
     in property <bool> has-avatar: false;
     in property <string> current-date: "—";
-    // Числовая текущая дата — для ��нициализации календаря
+    // Числовая текущая дата — для нициализации календаря
     in property <int> cur-year;
     in property <int> cur-month;
     in property <int> cur-day;
@@ -3010,6 +3297,13 @@ export component AppWindow inherits Window {
     in property <bool> chart-loading;
     in property <length> top-inset: 28px;
     in property <length> bottom-inset: 0px;
+    // Данные для родителей
+    in property <bool> is-parent: false;
+    in property <string> parent-name: "";
+    in property <string> current-child-guid: "";
+    in property <[ChildItem]> children-list;
+    in-out property <bool> child-select-open: false;
+    in property <bool> child-select-is-login: false;
 
     callback login-requested();
     callback prev-day();
@@ -3031,6 +3325,10 @@ export component AppWindow inherits Window {
     callback event-open-changed(bool);
     callback chart-open-changed(bool);
     callback sim-open-changed(bool);
+    callback open-child-select();
+    callback close-child-select();
+    callback select-child(string);
+    callback child-select-open-changed(bool);
 
     in-out property <int> tab: 0;
     in-out property <bool> cal-open: false;
@@ -3043,6 +3341,7 @@ export component AppWindow inherits Window {
     changed event-open => { root.event-open-changed(root.event-open); }
     changed chart-open => { root.chart-open-changed(root.chart-open); }
     changed sim-open => { root.sim-open-changed(root.sim-open); }
+    changed child-select-open => { root.child-select-open-changed(root.child-select-open); }
 
     if !root.logged-in : LoginScreen {
         width: 100%;
@@ -3183,9 +3482,13 @@ export component AppWindow inherits Window {
                 sid: root.sid;
                 avatar: root.avatar;
                 has-avatar: root.has-avatar;
+                is-parent: root.is-parent;
+                parent-name: root.parent-name;
+                children-list: root.children-list;
                 logout => { root.logout(); }
                 pick-avatar => { root.pick-avatar(); }
                 open-url(u) => { root.open-url(u); }
+                open-child-select => { root.open-child-select(); }
             }
         }
 
@@ -3232,5 +3535,15 @@ export component AppWindow inherits Window {
             root.cal-open = false;
         }
         canceled => { root.cal-open = false; }
+    }
+
+    // --- Оверлей выбора ребёнка (для родителей) ---
+    if root.child-select-open : ChildSelectOverlay {
+        width: 100%;
+        height: 100%;
+        items: root.children-list;
+        is-login: root.child-select-is-login;
+        select-child(g) => { root.select-child(g); }
+        close => { root.close-child-select(); }
     }
 }
