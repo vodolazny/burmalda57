@@ -1,0 +1,309 @@
+import { Theme } from "../theme.slint";
+import { ChildItem, SubjectToggle } from "../types.slint";
+import { MaterialButton } from "../components/buttons.slint";
+import { InfoRow } from "../components/cards.slint";
+import { SubjectsOverlay } from "subjects_overlay.slint";
+
+export component ProfileView inherits Rectangle {
+    in property <string> full-name;
+    in property <string> school-name;
+    in property <string> school-class;
+    in property <string> guid;
+    in property <string> sid;
+    in property <image> avatar;
+    in property <bool> has-avatar;
+    in property <bool> is-parent: false;
+    in property <string> parent-name: "";
+    in property <[ChildItem]> children-list;
+    callback logout();
+    callback pick-avatar();
+    callback open-url(string);
+    callback open-child-select();
+    callback open-subjects();
+    background: Theme.background;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 16px;
+
+        Rectangle {
+            border-radius: Theme.radius-l;
+            background: Theme.surface-container;
+            height: card.preferred-height + 28px;
+            card := VerticalLayout {
+                padding: 16px;
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 14px;
+                    Rectangle {
+                        width: 88px; height: 88px;
+                        // Круглый аватар с обрезкой
+                        Rectangle {
+                            width: 100%; height: 100%; border-radius: 44px;
+                            background: @linear-gradient(135deg, Theme.primary 0%, Theme.primary-2 100%);
+                            clip: true;
+                            if root.has-avatar : Image {
+                                source: root.avatar;
+                                width: 100%; height: 100%;
+                                image-fit: cover;
+                            }
+                            if !root.has-avatar : VerticalLayout {
+                                alignment: center;
+                                HorizontalLayout {
+                                    alignment: center;
+                                    Path {
+                                        width: 48px; height: 48px;
+                                        viewbox-width: 24; viewbox-height: 24;
+                                        commands: "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z";
+                                        fill: #ffffff;
+                                    }
+                                }
+                            }
+                        }
+                        // Бейдж-камера поверх, в правом нижнем углу
+                        Rectangle {
+                            width: 28px; height: 28px; border-radius: 14px;
+                            background: Theme.surface-container-high;
+                            border-width: 2px; border-color: Theme.surface-container;
+                            x: parent.width - self.width;
+                            y: parent.height - self.height;
+                            VerticalLayout {
+                                alignment: center;
+                                HorizontalLayout {
+                                    alignment: center;
+                                    Path {
+                                        width: 14px; height: 14px;
+                                        viewbox-width: 24; viewbox-height: 24;
+                                        commands: "M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z";
+                                        fill: Theme.on-surface;
+                                    }
+                                }
+                            }
+                        }
+                        TouchArea { clicked => { root.pick-avatar(); } }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        Text { text: root.full-name; font-size: 16px; font-weight: 700; color: Theme.on-surface; wrap: word-wrap; }
+                        Text { text: root.school-class + " класс"; font-size: 13px; color: Theme.on-surface-variant; }
+                    }
+                }
+                Rectangle { height: 1px; background: Theme.outline-variant; }
+                InfoRow { label: "Школа"; value: root.school-name; }
+                if root.is-parent && root.parent-name != "" : InfoRow { label: "��одитель"; value: root.parent-name; }
+            }
+        }
+
+        // Кнопка выбора ребёнка (для родителей с несколькими детьми)
+        if root.is-parent && root.children-list.length > 1 : Rectangle {
+            border-radius: Theme.radius-l;
+            background: Theme.surface-container;
+            height: child-btn-layout.preferred-height + 24px;
+
+            child-btn-layout := VerticalLayout {
+                padding: 14px;
+                spacing: 6px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: 20px;
+                            background: Theme.primary-container;
+                            Path {
+                                width: 22px;
+                                height: 22px;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                viewbox-width: 24;
+                                viewbox-height: 24;
+                                commands: "M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z";
+                                fill: Theme.on-primary-container;
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: "Выбрать ребёнка";
+                            font-size: 15px;
+                            font-weight: 600;
+                            color: Theme.on-surface;
+                        }
+                        Text {
+                            text: "Текущий: " + root.full-name;
+                            font-size: 12px;
+                            color: Theme.on-surface-variant;
+                            overflow: elide;
+                            wrap: no-wrap;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        Path {
+                            width: 20px;
+                            height: 20px;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: "M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z";
+                            fill: Theme.on-surface-variant;
+                        }
+                    }
+                }
+            }
+
+            TouchArea {
+                clicked => { root.open-child-select(); }
+            }
+        }
+
+        // Вкладка «Предметы в дневнике» — скрытие ненужных предметов
+        Rectangle {
+            border-radius: Theme.radius-l;
+            background: Theme.surface-container;
+            height: subj-btn-layout.preferred-height + 24px;
+
+            subj-btn-layout := VerticalLayout {
+                padding: 14px;
+                spacing: 6px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: 20px;
+                            background: Theme.secondary-container;
+                            Path {
+                                width: 22px;
+                                height: 22px;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                viewbox-width: 24;
+                                viewbox-height: 24;
+                                commands: "M3 5 h12 v2 h-12 z M3 11 h12 v2 h-12 z M3 17 h12 v2 h-12 z M18 5.5 l2.5 2.5 M20.5 5.5 l-2.5 2.5 M17.6 12 l1.6 1.6 l2.8 -3.2 M17.6 18 l1.6 1.6 l2.8 -3.2";
+                                fill: transparent;
+                                stroke: Theme.on-secondary-container;
+                                stroke-width: 1.8px;
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: "Предметы в дневнике";
+                            font-size: 15px;
+                            font-weight: 600;
+                            color: Theme.on-surface;
+                        }
+                        Text {
+                            text: "Скрыть ненужные предметы из расписания";
+                            font-size: 12px;
+                            color: Theme.on-surface-variant;
+                            overflow: elide;
+                            wrap: no-wrap;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        Path {
+                            width: 20px;
+                            height: 20px;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: "M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z";
+                            fill: Theme.on-surface-variant;
+                        }
+                    }
+                }
+            }
+
+            TouchArea {
+                clicked => { root.open-subjects(); }
+            }
+        }
+
+        MaterialButton {
+            height: 48px;
+            text: "Выйти";
+            filled: false;
+            clicked => { root.logout(); }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        // Подпись + кликабельная ссылка на GitHub
+        VerticalLayout {
+            spacing: 3px;
+            Text {
+                text: "Неофициальный клиент Образования 57";
+                font-size: 11px; color: Theme.on-surface-variant;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: "made in rust + slint";
+                font-size: 11px; color: Theme.on-surface-variant;
+                horizontal-alignment: center;
+            }
+            TouchArea {
+                height: linkText.preferred-height;
+                linkText := Text {
+                    text: "github.com/vodolazny/burmalda57";
+                    font-size: 11px; color: Theme.primary;
+                    width: 100%;
+                    horizontal-alignment: center;
+                }
+                clicked => { root.open-url("https://github.com/vodolazny/burmalda57"); }
+            }
+        }
+    }
+
+    // --- FAB: отзыв / пожелание / баг (Открывает Яндекс.Форму) ---
+    Rectangle {
+        width: 56px;
+        height: 56px;
+        x: parent.width - self.width - 16px;
+        y: parent.height - self.height - 20px;
+        border-radius: 18px;
+        background: feedback-ta.pressed ? Theme.primary-container.darker(0.08) : Theme.primary-container;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: Theme.shadow;
+        drop-shadow-offset-y: 3px;
+        Path {
+            width: 26px;
+            height: 26px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: "M12 6.5 C14.8 6.5 17 9.4 17 13 C17 16.6 14.8 19.5 12 19.5 C9.2 19.5 7 16.6 7 13 C7 9.4 9.2 6.5 12 6.5 Z M12 8 L12 18 M12 3 C13.2 3 14.2 4 14.2 5.2 C14.2 6.4 13.2 7.4 12 7.4 C10.8 7.4 9.8 6.4 9.8 5.2 C9.8 4 10.8 3 12 3 Z M10.6 3.4 L9.2 1.8 M13.4 3.4 L14.8 1.8 M7.2 10 L3.8 8.4 M7 13 L3.3 13 M7.2 16 L3.8 17.6 M16.8 10 L20.2 8.4 M17 13 L20.7 13 M16.8 16 L20.2 17.6";
+            fill: transparent;
+            stroke: Theme.on-primary-container;
+            stroke-width: 1.8px;
+        }
+        feedback-ta := TouchArea {
+            clicked => { root.open-url("https://forms.yandex.ru/u/6a4fcc2549af476d9920b49c"); }
+        }
+    }
+}
+
+// ============================================================
+//  Вкладка «Оц��нки»
+// ============================================================
+
+// M3 Filter Chip: активный — заливка secondary-container, неактивный — контур
+

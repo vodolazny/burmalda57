@@ -1,0 +1,207 @@
+import { Theme } from "../theme.slint";
+import { MarkColor } from "marks.slint";
+
+export component MaterialButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> filled: true;
+    callback clicked();
+    height: 40px;
+    border-radius: 20px;
+    background: root.filled
+        ? (ta.pressed ? Theme.primary.darker(0.12) : Theme.primary)
+        : (ta.pressed ? Theme.primary.transparentize(0.88) : transparent);
+    border-width: root.filled ? 0px : 1px;
+    border-color: Theme.outline;
+    animate background { duration: 120ms; }
+    HorizontalLayout {
+        alignment: center;
+        padding-left: 24px;
+        padding-right: 24px;
+        Text {
+            text: root.text;
+            color: root.filled ? Theme.on-primary : Theme.primary;
+            font-size: 15px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Строка детали (иконка + текст) для раскрытой карточки урока
+
+export component SegmentedButtons inherits Rectangle {
+    in property <[string]> options;
+    in property <int> selected;
+    callback select(int);
+
+    height: 40px;
+    border-radius: 20px;
+    border-width: 1px;
+    border-color: Theme.outline;
+    clip: true;
+
+    HorizontalLayout {
+        for opt[i] in root.options : Rectangle {
+            horizontal-stretch: 1;
+            background: i == root.selected ? Theme.secondary-container : transparent;
+
+            // Разделитель слева (кроме первого и соседей выбранного)
+            if (i > 0 && i != root.selected && (i - 1) != root.selected) : Rectangle {
+                x: 0;
+                width: 1px;
+                height: parent.height;
+                background: Theme.outline;
+            }
+
+            Text {
+                text: opt;
+                font-size: 13px;
+                font-weight: i == root.selected ? 700 : 500;
+                color: i == root.selected ? Theme.on-secondary-container : Theme.on-surface;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            seg-ta := TouchArea { clicked => { root.select(i); } }
+        }
+    }
+}
+
+// Шторка создания своего события (выезжает снизу, с затемнением)
+
+export component FilterChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+
+    height: 34px;
+    border-radius: 17px;
+    background: root.selected
+        ? Theme.secondary-container
+        : (ta.pressed ? Theme.on-surface.transparentize(0.92) : transparent);
+    border-width: root.selected ? 0px : 1px;
+    border-color: Theme.outline;
+    animate background { duration: 120ms; }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        Text {
+            text: root.text;
+            font-size: 13px;
+            font-weight: 600;
+            color: root.selected ? Theme.on-secondary-container : Theme.on-surface-variant;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+// Микро-карточка одной оценки: дата сверху, крупная цифра снизу
+
+export component MSwitch inherits Rectangle {
+    in property <bool> checked;
+    callback toggled(bool);
+
+    width: 48px;
+    height: 28px;
+    border-radius: 14px;
+    background: root.checked ? Theme.primary : Theme.surface-container-high;
+    border-width: root.checked ? 0px : 2px;
+    border-color: Theme.outline-variant;
+    animate background { duration: 120ms; }
+
+    Rectangle {
+        width: root.checked ? 20px : 16px;
+        height: self.width;
+        border-radius: self.width / 2;
+        y: (parent.height - self.height) / 2;
+        x: root.checked ? parent.width - self.width - 4px : 6px;
+        background: root.checked ? Theme.on-primary : Theme.outline;
+        animate x, width, background { duration: 120ms; }
+    }
+
+    TouchArea {
+        clicked => { root.toggled(!root.checked); }
+    }
+}
+
+// --- Оверлей «Предметы в дневнике»: тумблер на каждый предмет ---
+
+export component SimStepper inherits Rectangle {
+    in property <int> value;
+    in property <int> net;
+    in property <bool> can-remove: true;
+    callback add();
+    callback remove();
+
+    property <color> fg: mc.fg;
+    mc := MarkColor { value: root.value; }
+
+    height: 96px;
+    border-radius: Theme.radius-m;
+    background: root.fg.transparentize(0.9);
+    border-width: 1px;
+    border-color: root.fg.transparentize(0.6);
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 4px;
+        alignment: center;
+        Text {
+            text: "\{root.value}";
+            font-size: 22px;
+            font-weight: 800;
+            color: root.fg;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: root.net == 0 ? "—" : (root.net > 0 ? "+\{root.net}" : "\{root.net}");
+            font-size: 12px;
+            font-weight: 700;
+            color: root.net == 0 ? Theme.on-surface-variant : root.fg;
+            horizontal-alignment: center;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 30px;
+                border-radius: 8px;
+                opacity: root.can-remove ? 1.0 : 0.4;
+                background: Theme.surface-container-highest;
+                Text {
+                    text: "−";
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: Theme.on-surface;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                minus-ta := TouchArea {
+                    clicked => { root.remove(); }
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 30px;
+                border-radius: 8px;
+                background: root.fg.transparentize(0.8);
+                Text {
+                    text: "+";
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: root.fg;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                plus-ta := TouchArea {
+                    clicked => { root.add(); }
+                }
+            }
+        }
+    }
+}
+
+// Нижний лист симулятора: виртуальные оценки и прогноз среднего
+

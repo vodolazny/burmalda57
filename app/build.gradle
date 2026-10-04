@@ -1,0 +1,101 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+def keystoreProps = new Properties()
+def keystorePropsFile = rootProject.file("keystore.properties")
+def hasKeystore = keystorePropsFile.exists()
+if (hasKeystore) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
+android {
+    namespace 'ru.burmalda.journal'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'ru.burmalda.journal'
+        minSdk 26
+        targetSdk 34
+        versionCode 3
+        versionName '1.7.0'
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+
+    signingConfigs {
+        if (hasKeystore) {
+            release {
+                storeFile file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (hasKeystore) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.work:work-runtime-ktx:2.9.1'
+}
+
+// ====================================================================
+//  Сборка Rust .so через cargo-ndk перед упаковкой APK
+// ====================================================================
+def rustDir = file("${rootDir}/rust")
+def jniLibsDir = file("${projectDir}/src/main/jniLibs")
+
+tasks.register('cargoNdkBuild', Exec) {
+    workingDir rustDir
+    // собираем только под arm64
+    commandLine 'cargo', 'ndk',
+        '-t', 'arm64-v8a',
+        '-o', jniLibsDir.absolutePath,
+        'build', '--release'
+
+    // Пути берём из окружения (см. README), захардкоженные — только фолбэк
+    def sdkDir = System.getenv('ANDROID_HOME') ?: System.getenv('ANDROID_SDK_ROOT') ?: '/opt/android-sdk'
+    def ndkDir = System.getenv('ANDROID_NDK_HOME') ?: System.getenv('ANDROID_NDK_ROOT') ?: "${sdkDir}/ndk/29.0.14206865"
+    def buildToolsVer = '34.0.0'
+
+    environment 'ANDROID_HOME',                sdkDir
+    environment 'ANDROID_NDK_HOME',            ndkDir
+    environment 'ANDROID_NDK_ROOT',            ndkDir
+    environment 'ANDROID_JAR',                 "${sdkDir}/platforms/android-34/android.jar"
+    environment 'ANDROID_BUILD_TOOLS_VERSION', buildToolsVer
+    environment 'ANDROID_D8_JAR',              "${sdkDir}/build-tools/${buildToolsVer}/lib/d8.jar"
+    environment 'JAVA_HOME',                   System.getenv('JAVA_HOME') ?: '/usr/lib/jvm/java-17-openjdk'
+}
+
+tasks.named('preBuild').configure {
+    dependsOn 'cargoNdkBuild'
+}
+
+tasks.named('clean').configure {
+    doFirst { delete jniLibsDir }
+}

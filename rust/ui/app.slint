@@ -1,0 +1,337 @@
+// Main entry point for Burmalda57 Slint UI
+export {
+    Lesson, ChildItem, SubjectToggle, RecentGrade, GradeMark,
+    SubjectGrades, FinalMark, SubjectFinals, ChartPoint, ChartDivider, SubjectChart
+} from "types.slint";
+export { Validate, Theme, CalMath } from "theme.slint";
+
+import { Theme } from "theme.slint";
+import {
+    Lesson, ChildItem, SubjectToggle, RecentGrade, SubjectGrades, SubjectFinals, ChartPoint, ChartDivider
+} from "types.slint";
+import { NavItem } from "components/navigation.slint";
+import { LoginScreen } from "views/login.slint";
+import { DiaryView } from "views/diary.slint";
+import { GradesView } from "views/grades.slint";
+import { ProfileView } from "views/profile.slint";
+import { RuCalendar } from "views/calendar.slint";
+import { ChildSelectOverlay } from "views/child_select.slint";
+import { SubjectsOverlay } from "views/subjects_overlay.slint";
+
+export component AppWindow inherits Window {
+    title: "Дневник";
+    preferred-width: 400px;
+    preferred-height: 820px;
+    background: Theme.background;
+
+    in property <[RecentGrade]> recent-grades;
+    in property <bool> logged-in: false;
+    in property <string> full-name: "—";
+    in property <string> school-name: "—";
+    in property <string> school-class: "—";
+    in property <string> guid: "—";
+    in property <string> sid: "—";
+    in property <image> avatar;
+    in property <bool> has-avatar: false;
+    in property <string> current-date: "—";
+    // Числовая тек��щая дата — для нициализации календаря
+    in property <int> cur-year;
+    in property <int> cur-month;
+    in property <int> cur-day;
+    in property <[Lesson]> lessons;
+    in property <string> net-error;
+    // Подстрока баннера: когда получены данные, которые сейчас на экране
+    in property <string> net-stale;
+    in property <bool> loading;
+    in property <string> login-error;
+    in property <bool> logging-in;
+    // --- Проверка обновлений ---
+    in property <bool> update-available: false;
+    in property <string> update-version;
+    in property <string> update-url;
+    private property <bool> update-dismissed: false;
+    // Вкладка «Оценки»
+    in property <[string]> grade-periods;
+    in property <int> grade-selected;
+    in property <[SubjectGrades]> grade-subjects;
+    in property <[SubjectFinals]> grade-finals;
+    in property <int> grade-mode;
+    in property <bool> grades-loading;
+    in property <string> grades-error;
+    // График успеваемости за год
+    in property <[ChartPoint]> chart-points;
+    in property <[ChartDivider]> chart-dividers;
+    in property <string> chart-line-path;
+    in property <bool> chart-has-data;
+    in property <bool> chart-loading;
+    in property <length> top-inset: 28px;
+    in property <length> bottom-inset: 0px;
+    // Данные для родителей
+    in property <bool> is-parent: false;
+    in property <string> parent-name: "";
+    in property <string> current-child-guid: "";
+    in property <[ChildItem]> children-list;
+    in-out property <bool> child-select-open: false;
+    in property <bool> child-select-is-login: false;
+
+    callback login-requested();
+    callback prev-day();
+    callback next-day();
+    callback logout();
+    callback pick-avatar();
+    callback open-url(string);
+    callback refresh-day();
+    callback grade-select(int);
+    callback grade-mode-select(int);
+    callback grade-open-chart(string);
+    callback pick-date(int, int, int);   // год, месяц, день
+    callback add-event(string, string, string);
+    callback delete-event(string);
+    callback toggle-homework(string, bool);
+    callback save-note(string, string);
+    callback demo-requested();
+    callback tab-changed(int);
+    callback cal-open-changed(bool);
+    callback event-open-changed(bool);
+    callback chart-open-changed(bool);
+    callback sim-open-changed(bool);
+    callback open-child-select();
+    callback close-child-select();
+    // Скрытие предметов из дневника (вкладка в профиле)
+    callback toggle-subject-hidden(string, bool);
+    callback select-child(string);
+    callback child-select-open-changed(bool);
+
+    in-out property <int> tab: 0;
+    in-out property <bool> cal-open: false;
+    in-out property <bool> event-open: false;
+    in-out property <bool> sim-open: false;
+    in-out property <bool> chart-open: false;
+    // Список предметов для вкладки «Предметы в дневнике»
+    in property <[SubjectToggle]> subject-toggles;
+    in-out property <bool> subjects-open: false;
+
+    changed tab => { root.tab-changed(root.tab); }
+    changed cal-open => { root.cal-open-changed(root.cal-open); }
+    changed event-open => { root.event-open-changed(root.event-open); }
+    changed chart-open => { root.chart-open-changed(root.chart-open); }
+    changed sim-open => { root.sim-open-changed(root.sim-open); }
+    changed child-select-open => { root.child-select-open-changed(root.child-select-open); }
+
+    if !root.logged-in : LoginScreen {
+        width: 100%;
+        height: 100%;
+        login-error: root.login-error;
+        logging-in: root.logging-in;
+        login-requested => { root.login-requested(); }
+        demo-requested => { root.demo-requested(); }
+    }
+
+    if root.logged-in : VerticalLayout {
+        spacing: 0px;
+        padding-top: root.top-inset;
+        if root.update-available && !root.update-dismissed : Rectangle {
+            height: 56px;
+            background: Theme.secondary-container;
+
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 8px;
+                spacing: 10px;
+
+                VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 22px; height: 22px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: "M16 18v2H8v-2h8zM11 7.83l-3.41 3.41L6.17 9.83 12 4l5.83 5.83-1.41 1.41L13 7.83V16h-2V7.83z";
+                        fill: Theme.on-secondary-container;
+                    }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: "Доступна версия " + root.update-version;
+                    font-size: 13px;
+                    font-weight: 500;
+                    color: Theme.on-secondary-container;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                // Кнопка "Скачать"
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        height: 36px;
+                        width: dl.preferred-width + 28px;
+                        border-radius: 18px;
+                        background: dl-ta.pressed ? Theme.primary.darker(0.12) : Theme.primary;
+                        dl := Text {
+                            text: "Скачать";
+                            color: Theme.on-primary;
+                            font-size: 13px;
+                            font-weight: 600;
+                        }
+                        dl-ta := TouchArea {
+                            clicked => {
+                                root.open-url(root.update-url);
+                                root.update-dismissed = true;
+                            }
+                        }
+                    }
+                }
+
+                // Крестик — иконкой, как везде в UI
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 20px;
+                        background: x-ta.pressed ? Theme.secondary-container.darker(0.08) : transparent;
+                        Path {
+                            width: 15px;
+                            height: 15px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: "M6 6 L18 18 M6 18 L18 6";
+                            fill: transparent;
+                            stroke: Theme.on-secondary-container;
+                            stroke-width: 2px;
+                        }
+                        x-ta := TouchArea { clicked => { root.update-dismissed = true; } }
+                    }
+                }
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            if root.tab == 0 : DiaryView {
+                event-open <=> root.event-open;
+                recent-grades: root.recent-grades;
+                lessons: root.lessons;
+                net-error: root.net-error;
+                net-stale: root.net-stale;
+                loading: root.loading;
+                width: 100%; height: 100%;
+                current-date: root.current-date;
+                cur-year: root.cur-year;
+                cur-month: root.cur-month;
+                cur-day: root.cur-day;
+                prev-day => { root.prev-day(); }
+                next-day => { root.next-day(); }
+                open-calendar => { root.cal-open = true; }
+                refresh => { root.refresh-day(); }
+                pick-date(y, m, d) => { root.pick-date(y, m, d); }
+                add-event(n, s, e) => { root.add-event(n, s, e); }
+                delete-event(id) => { root.delete-event(id); }
+                toggle-homework(k, d) => { root.toggle-homework(k, d); }
+                save-note(k, t) => { root.save-note(k, t); }
+            }
+            if root.tab == 1 : GradesView {
+                sim-open <=> root.sim-open;
+                chart-open <=> root.chart-open;
+                width: 100%; height: 100%;
+                periods: root.grade-periods;
+                selected: root.grade-selected;
+                subjects: root.grade-subjects;
+                finals: root.grade-finals;
+                mode: root.grade-mode;
+                loading: root.grades-loading;
+                error: root.grades-error;
+                chart-points: root.chart-points;
+                chart-dividers: root.chart-dividers;
+                chart-line-path: root.chart-line-path;
+                chart-has-data: root.chart-has-data;
+                chart-loading: root.chart-loading;
+                select(i) => { root.grade-select(i); }
+                select-mode(i) => { root.grade-mode-select(i); }
+                open-chart(s) => { root.grade-open-chart(s); }
+            }
+            if root.tab == 2 : ProfileView {
+                width: 100%; height: 100%;
+                full-name: root.full-name;
+                school-name: root.school-name;
+                school-class: root.school-class;
+                guid: root.guid;
+                sid: root.sid;
+                avatar: root.avatar;
+                has-avatar: root.has-avatar;
+                is-parent: root.is-parent;
+                parent-name: root.parent-name;
+                children-list: root.children-list;
+                logout => { root.logout(); }
+                pick-avatar => { root.pick-avatar(); }
+                open-url(u) => { root.open-url(u); }
+                open-child-select => { root.open-child-select(); }
+                open-subjects => { root.subjects-open = true; }
+            }
+        }
+
+        // Нижняя навигация (M3 navigation bar) — жёсткие трети
+        Rectangle {
+            height: 72px + root.bottom-inset;
+            background: Theme.nav-bg;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: Theme.shadow;
+            drop-shadow-offset-y: -2px;
+
+            Rectangle {
+                width: 100%;
+                height: 72px;
+                y: 0;
+                NavItem {
+                    x: 0; width: parent.width / 3; height: parent.height;
+                    icon-id: 0; label: "Дневник"; selected: root.tab == 0;
+                    clicked => { root.tab = 0; }
+                }
+                NavItem {
+                    x: parent.width / 3; width: parent.width / 3; height: parent.height;
+                    icon-id: 1; label: "Оценки"; selected: root.tab == 1;
+                    clicked => { root.tab = 1; }
+                }
+                NavItem {
+                    x: parent.width / 3 * 2; width: parent.width / 3; height: parent.height;
+                    icon-id: 2; label: "Профиль"; selected: root.tab == 2;
+                    clicked => { root.tab = 2; }
+                }
+            }
+        }
+    }
+
+    // --- Оверлей русского календаря (поверх всего) ---
+    if root.cal-open : RuCalendar {
+        width: 100%;
+        height: 100%;
+        init-year: root.cur-year;
+        init-month: root.cur-month;
+        init-day: root.cur-day;
+        accepted(y, m, d) => {
+            root.pick-date(y, m, d);
+            root.cal-open = false;
+        }
+        canceled => { root.cal-open = false; }
+    }
+
+    // --- Оверлей выбора ребёнка (для родителей) ---
+    if root.child-select-open : ChildSelectOverlay {
+        width: 100%;
+        height: 100%;
+        items: root.children-list;
+        is-login: root.child-select-is-login;
+        select-child(g) => { root.select-child(g); }
+        close => { root.close-child-select(); }
+    }
+
+    // --- Оверлей настройки предметов дневника ---
+    if root.subjects-open : SubjectsOverlay {
+        width: 100%;
+        height: 100%;
+        items: root.subject-toggles;
+        toggle-subject-hidden(s, h) => { root.toggle-subject-hidden(s, h); }
+        close => { root.subjects-open = false; }
+    }
+}
+

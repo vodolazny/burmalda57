@@ -1,0 +1,131 @@
+// Theme and global validators / math
+
+export global Validate {
+    pure callback invalid(string) -> bool;
+}
+
+
+export global Theme {
+    // ================================================================
+    //  БАЗОВЫЕ РОЛИ — задаются из Rust (Material You). Если система их
+    //  не отдаёт (API<31), работают дефолты по признаку dark.
+    // ================================================================
+    in-out property <bool> dark: false;
+
+    // Accent 1 (primary)
+    in-out property <color> primary:              dark ? #D0BCFF : #6750A4;
+    in-out property <color> on-primary:           dark ? #381E72 : #FFFFFF;
+    in-out property <color> primary-container:    dark ? #4F378B : #EADDFF;
+    in-out property <color> on-primary-container: dark ? #EADDFF : #21005D;
+
+    // Accent 2 (secondary — tonal-бейджи, навбар-таблетка)
+    in-out property <color> secondary-container:    dark ? #4A4458 : #E8DEF8;
+    in-out property <color> on-secondary-container: dark ? #E8DEF8 : #1D192B;
+
+    // Нейтрали (neutral1/neutral2)
+    in-out property <color> surface:            dark ? #141218 : #FEF7FF;
+    in-out property <color> on-surface:         dark ? #E6E1E5 : #1D1B20;
+    in-out property <color> on-surface-variant: dark ? #CAC4D0 : #49454F;
+    in-out property <color> outline:            dark ? #938F99 : #79747E;
+
+    // ================================================================
+    //  ПРОИЗВОДНЫЕ — считаются из базовых, поэтому следуют за Material You.
+    //  Лестница elevation: сдвигаем surface в сторону on-surface.
+    // ================================================================
+    out property <color> background:                surface;
+    out property <color> surface-container-low:     surface.mix(on-surface, 0.96);
+    out property <color> surface-container:         surface.mix(on-surface, 0.93);
+    out property <color> surface-container-high:    surface.mix(on-surface, 0.89);
+    out property <color> surface-container-highest: surface.mix(on-surface, 0.86);
+    out property <color> outline-variant:           surface.mix(on-surface, 0.72);
+    out property <color> nav-bg:                    surface.mix(on-surface, 0.93);
+    out property <color> shadow:             dark ? #00000066 : #0000001F;
+
+    // --- Ошибки (M3 error roles) ---
+    out property <color> error:              dark ? #F2B8B5 : #B3261E;
+    out property <color> error-container:    dark ? #8C1D18 : #F9DEDC;
+    out property <color> on-error-container:  dark ? #F9DEDC : #410E0B;
+
+    // --- Производные ---
+    out property <color> primary-2: primary.brighter(0.12);
+
+    // --- Цвета оценок (светлее/пастельнее в тёмной теме — для контраста) ---
+    out property <color> mark-5: dark ? #7FD98A : #2E7D32;
+    out property <color> mark-4: dark ? #7FB2F0 : #1565C0;
+    out property <color> mark-3: dark ? #F5B871 : #E67700;
+    out property <color> mark-2: dark ? #F0918C : #C62828;
+
+    // --- Форма (M3 shape scale, строже) ---
+    out property <length> radius-s: 8px;
+    out property <length> radius-m: 12px;
+    out property <length> radius-l: 12px;
+    out property <length> radius-xl: 20px;
+}
+
+// ---------------------------------------------------------------------
+//  Material Design 3 Expressive: LoadingIndicator (Uncontained)
+//  Exact shapes from Material 3 Expressive specification:
+//  - Shape A: 12-lobed Soft Scallop Cookie / Sunny Rosette
+//  - Shape B: 4-lobed Puffy Pillow / Soft Square Blob
+//  - 100% continuous, smooth harmonic morphing + continuous rotation
+// ---------------------------------------------------------------------
+
+export global CalMath {
+    out property <[string]> months: [
+        "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+        "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+    ];
+    // Неделя с понедельника
+    out property <[string]> weekdays: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+    // Таблица Сакамото для дня недели
+    out property <[int]> sk: [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+
+    // Целочисленный остаток (без опоры на встроенный mod)
+    pure function imod(a: int, b: int) -> int {
+        return a - (a / b).floor() * b;
+    }
+    pure function is-leap(y: int) -> bool {
+        return (root.imod(y, 4) == 0 && root.imod(y, 100) != 0) || root.imod(y, 400) == 0;
+    }
+    public pure function days-in-month(y: int, m: int) -> int {
+        return m == 2 ? (root.is-leap(y) ? 29 : 28)
+             : (m == 4 || m == 6 || m == 9 || m == 11) ? 30
+             : 31;
+    }
+    // День недели 1-го числа, 0 = воскресенье (алгоритм Сакамото)
+    pure function dow-sun(y: int, m: int, d: int) -> int {
+        return root.imod(
+            (m < 3 ? y - 1 : y)
+            + ((m < 3 ? y - 1 : y) / 4).floor()
+            - ((m < 3 ? y - 1 : y) / 100).floor()
+            + ((m < 3 ? y - 1 : y) / 400).floor()
+            + root.sk[m - 1] + d, 7);
+    }
+    // День недели 1-го числа, 0 = понедельник ... 6 = воскресенье
+    public pure function first-dow-mon(y: int, m: int) -> int {
+        return root.imod(root.dow-sun(y, m, 1) + 6, 7);
+    }
+    // День недели даты: 0 = понедельник ... 6 = воскресенье
+    public pure function dow-mon(y: int, m: int, d: int) -> int {
+        return root.imod(root.dow-sun(y, m, d) + 6, 7);
+    }
+    // Сдвиг даты на delta дней (|delta| небольшой, до одного перехода границы месяца).
+    // Возвращает код y*10000 + m*100 + d.
+    public pure function shift-date(y: int, m: int, d: int, delta: int) -> int {
+        return (d + delta) < 1
+            ? ((m == 1 ? y - 1 : y) * 10000 + (m == 1 ? 12 : m - 1) * 100
+               + (d + delta + root.days-in-month(m == 1 ? y - 1 : y, m == 1 ? 12 : m - 1)))
+            : (d + delta) > root.days-in-month(y, m)
+                ? ((m == 12 ? y + 1 : y) * 10000 + (m == 12 ? 1 : m + 1) * 100
+                   + (d + delta - root.days-in-month(y, m)))
+                : (y * 10000 + m * 100 + (d + delta));
+    }
+    public pure function dec-year(code: int) -> int { return (code / 10000).floor(); }
+    public pure function dec-month(code: int) -> int { return root.imod((code / 100).floor(), 100); }
+    public pure function dec-day(code: int) -> int { return root.imod(code, 100); }
+}
+
+// ============================================================
+//  календ��рь выбора даты (год, месяц, день)
+// ============================================================
+

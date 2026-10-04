@@ -1,0 +1,157 @@
+import { Theme } from "../theme.slint";
+
+export component Md3LoadingIndicator inherits Rectangle {
+    in property <brush> indicator-color: Theme.primary;
+
+    min-width: 36px;
+    min-height: 36px;
+    clip: false;
+
+    path := Path {
+        private property <float> cx: 50;
+        private property <float> cy: 50;
+
+        private property <float> t: animation-tick() / 1ms;
+
+        private property <float> rot: mod(t * 0.13, 360.0);
+
+        private property <float> morph: 0.5 - 0.5 * cos(t / 2200.0 * 360deg);
+
+        private property <float> scale: 1.0 + 0.04 * sin(t / 1100.0 * 360deg);
+
+        private property <float> a12: 2.6 * (1.0 - morph);
+        private property <float> a4:  7.2 * morph;
+        private property <float> r-base: 34.0 * scale;
+
+     
+        private property <float> r0:  r-base + a4 * cos(0deg)   + a12 * cos(0deg);
+        private property <float> x0:  cx + r0 * cos(rot * 1deg + 0deg);
+        private property <float> y0:  cy + r0 * sin(rot * 1deg + 0deg);
+
+        private property <float> r1:  r-base + a4 * cos(60deg)  + a12 * cos(180deg);
+        private property <float> x1:  cx + r1 * cos(rot * 1deg + 15deg);
+        private property <float> y1:  cy + r1 * sin(rot * 1deg + 15deg);
+
+        private property <float> r2:  r-base + a4 * cos(120deg) + a12 * cos(360deg);
+        private property <float> x2:  cx + r2 * cos(rot * 1deg + 30deg);
+        private property <float> y2:  cy + r2 * sin(rot * 1deg + 30deg);
+
+        private property <float> r3:  r-base + a4 * cos(180deg) + a12 * cos(540deg);
+        private property <float> x3:  cx + r3 * cos(rot * 1deg + 45deg);
+        private property <float> y3:  cy + r3 * sin(rot * 1deg + 45deg);
+
+        private property <float> r4:  r-base + a4 * cos(240deg) + a12 * cos(720deg);
+        private property <float> x4:  cx + r4 * cos(rot * 1deg + 60deg);
+        private property <float> y4:  cy + r4 * sin(rot * 1deg + 60deg);
+
+        private property <float> r5:  r-base + a4 * cos(300deg) + a12 * cos(900deg);
+        private property <float> x5:  cx + r5 * cos(rot * 1deg + 75deg);
+        private property <float> y5:  cy + r5 * sin(rot * 1deg + 75deg);
+
+        private property <float> r6:  r-base + a4 * cos(360deg) + a12 * cos(1080deg);
+        private property <float> x6:  cx + r6 * cos(rot * 1deg + 90deg);
+        private property <float> y6:  cy + r6 * sin(rot * 1deg + 90deg);
+
+        private property <float> r7:  r-base + a4 * cos(420deg) + a12 * cos(1260deg);
+        private property <float> x7:  cx + r7 * cos(rot * 1deg + 105deg);
+        private property <float> y7:  cy + r7 * sin(rot * 1deg + 105deg);
+
+        private property <float> r8:  r-base + a4 * cos(480deg) + a12 * cos(1440deg);
+        private property <float> x8:  cx + r8 * cos(rot * 1deg + 120deg);
+        private property <float> y8:  cy + r8 * sin(rot * 1deg + 120deg);
+
+        private property <float> r9:  r-base + a4 * cos(540deg) + a12 * cos(1620deg);
+        private property <float> x9:  cx + r9 * cos(rot * 1deg + 135deg);
+        private property <float> y9:  cy + r9 * sin(rot * 1deg + 135deg);
+
+        private property <float> r10: r-base + a4 * cos(600deg) + a12 * cos(1800deg);
+        private property <float> x10: cx + r10 * cos(rot * 1deg + 150deg);
+        private property <float> y10: cy + r10 * sin(rot * 1deg + 150deg);
+
+        private property <float> r11: r-base + a4 * cos(660deg) + a12 * cos(1980deg);
+        private property <float> x11: cx + r11 * cos(rot * 1deg + 165deg);
+        private property <float> y11: cy + r11 * sin(rot * 1deg + 165deg);
+
+        private property <float> r12: r-base + a4 * cos(720deg) + a12 * cos(2160deg);
+        private property <float> x12: cx + r12 * cos(rot * 1deg + 180deg);
+        private property <float> y12: cy + r12 * sin(rot * 1deg + 180deg);
+
+        private property <float> r13: r-base + a4 * cos(780deg) + a12 * cos(2340deg);
+        private property <float> x13: cx + r13 * cos(rot * 1deg + 195deg);
+        private property <float> y13: cy + r13 * sin(rot * 1deg + 195deg);
+
+        private property <float> r14: r-base + a4 * cos(840deg) + a12 * cos(2520deg);
+        private property <float> x14: cx + r14 * cos(rot * 1deg + 210deg);
+        private property <float> y14: cy + r14 * sin(rot * 1deg + 210deg);
+
+        private property <float> r15: r-base + a4 * cos(900deg) + a12 * cos(2700deg);
+        private property <float> x15: cx + r15 * cos(rot * 1deg + 225deg);
+        private property <float> y15: cy + r15 * sin(rot * 1deg + 225deg);
+
+        private property <float> r16: r-base + a4 * cos(960deg) + a12 * cos(2880deg);
+        private property <float> x16: cx + r16 * cos(rot * 1deg + 240deg);
+        private property <float> y16: cy + r16 * sin(rot * 1deg + 240deg);
+
+        private property <float> r17: r-base + a4 * cos(1020deg) + a12 * cos(3060deg);
+        private property <float> x17: cx + r17 * cos(rot * 1deg + 255deg);
+        private property <float> y17: cy + r17 * sin(rot * 1deg + 255deg);
+
+        private property <float> r18: r-base + a4 * cos(1080deg) + a12 * cos(3240deg);
+        private property <float> x18: cx + r18 * cos(rot * 1deg + 270deg);
+        private property <float> y18: cy + r18 * sin(rot * 1deg + 270deg);
+
+        private property <float> r19: r-base + a4 * cos(1140deg) + a12 * cos(3420deg);
+        private property <float> x19: cx + r19 * cos(rot * 1deg + 285deg);
+        private property <float> y19: cy + r19 * sin(rot * 1deg + 285deg);
+
+        private property <float> r20: r-base + a4 * cos(1200deg) + a12 * cos(3600deg);
+        private property <float> x20: cx + r20 * cos(rot * 1deg + 300deg);
+        private property <float> y20: cy + r20 * sin(rot * 1deg + 300deg);
+
+        private property <float> r21: r-base + a4 * cos(1260deg) + a12 * cos(3780deg);
+        private property <float> x21: cx + r21 * cos(rot * 1deg + 315deg);
+        private property <float> y21: cy + r21 * sin(rot * 1deg + 315deg);
+
+        private property <float> r22: r-base + a4 * cos(1320deg) + a12 * cos(3960deg);
+        private property <float> x22: cx + r22 * cos(rot * 1deg + 330deg);
+        private property <float> y22: cy + r22 * sin(rot * 1deg + 330deg);
+
+        private property <float> r23: r-base + a4 * cos(1380deg) + a12 * cos(4140deg);
+        private property <float> x23: cx + r23 * cos(rot * 1deg + 345deg);
+        private property <float> y23: cy + r23 * sin(rot * 1deg + 345deg);
+
+        viewbox-width: 100;
+        viewbox-height: 100;
+        width: 100%;
+        height: 100%;
+        fill: root.indicator-color;
+
+        MoveTo { x: x0; y: y0; }
+        LineTo { x: x1; y: y1; }
+        LineTo { x: x2; y: y2; }
+        LineTo { x: x3; y: y3; }
+        LineTo { x: x4; y: y4; }
+        LineTo { x: x5; y: y5; }
+        LineTo { x: x6; y: y6; }
+        LineTo { x: x7; y: y7; }
+        LineTo { x: x8; y: y8; }
+        LineTo { x: x9; y: y9; }
+        LineTo { x: x10; y: y10; }
+        LineTo { x: x11; y: y11; }
+        LineTo { x: x12; y: y12; }
+        LineTo { x: x13; y: y13; }
+        LineTo { x: x14; y: y14; }
+        LineTo { x: x15; y: y15; }
+        LineTo { x: x16; y: y16; }
+        LineTo { x: x17; y: y17; }
+        LineTo { x: x18; y: y18; }
+        LineTo { x: x19; y: y19; }
+        LineTo { x: x20; y: y20; }
+        LineTo { x: x21; y: y21; }
+        LineTo { x: x22; y: y22; }
+        LineTo { x: x23; y: y23; }
+    }
+}
+
+// Цвет оценки по её значению (общий помощник)
+

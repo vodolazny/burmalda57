@@ -1,0 +1,233 @@
+import { Theme } from "../theme.slint";
+import { GradeMark, SubjectGrades, SubjectFinals, ChartPoint, ChartDivider } from "../types.slint";
+import { Md3LoadingIndicator } from "../components/loading.slint";
+import { FilterChip, SegmentedButtons, MaterialButton } from "../components/buttons.slint";
+import { SubjectCard, SubjectFinalsCard } from "../components/cards.slint";
+import { ChartSheet } from "chart_sheet.slint";
+import { SimulatorSheet } from "simulator_sheet.slint";
+
+export component GradesView inherits Rectangle {
+    in property <[string]> periods;
+    in property <int> selected;
+    in property <[SubjectGrades]> subjects;
+    in property <[SubjectFinals]> finals;
+    in property <int> mode;          // 0 — текущая, 1 — годовая
+    in property <bool> loading;
+    in property <string> error;
+    callback select(int);
+    callback select-mode(int);
+    background: Theme.background;
+
+    // Локальный режим: переключается мгновенно по тапу, а Rust уведомляется
+    // через select-mode() для ленивой загрузки годовых. Инициализируется из
+    // входного mode; после первого тапа управление берёт UI.
+    property <int> active-mode: root.mode;
+
+    // Симулятор оценок
+    in-out property <bool> sim-open: false;
+    property <string> sim-subject;
+    property <float> sim-avg;
+    property <int> sim-count;
+    property <string> sim-avg-str;
+    in-out property <[GradeMark]> sim-marks;
+
+    // График успеваемости за год
+    in property <[ChartPoint]> chart-points;
+    in property <[ChartDivider]> chart-dividers;
+    in property <string> chart-line-path;
+    in property <bool> chart-has-data;
+    in property <bool> chart-loading;
+    in-out property <bool> chart-open: false;
+    property <string> chart-subject;
+    callback open-chart(string);   // Rust грузит годовые оценки предмета
+
+    VerticalLayout {
+        // --- Режимные чипсы: Текущая / Годовая ---
+        HorizontalLayout {
+            height: 52px;
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 12px;
+            spacing: 8px;
+            alignment: center;
+            FilterChip {
+                text: "Текущая";
+                selected: root.active-mode == 0;
+                clicked => { root.active-mode = 0; root.select-mode(0); }
+            }
+            FilterChip {
+                text: "Годовая";
+                selected: root.active-mode == 1;
+                clicked => { root.active-mode = 1; root.select-mode(1); }
+            }
+        }
+
+        // ================= ТЕКУЩАЯ =================
+        if root.active-mode == 0 : VerticalLayout {
+            vertical-stretch: 1;
+
+            // Чипсы четвертей (горизонтальный скролл)
+            Rectangle {
+                height: 58px;
+                clip: true;
+                Flickable {
+                    width: 100%;
+                    height: 100%;
+                    viewport-width: max(self.width, chips.preferred-width);
+                    viewport-height: self.height;
+                    chips := HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        padding-top: 12px;
+                        spacing: 8px;
+                        alignment: start;
+                        for p[i] in root.periods : FilterChip {
+                            text: p;
+                            selected: i == root.selected;
+                            clicked => { root.select(i); }
+                        }
+                    }
+                }
+            }
+
+            // Список предметов
+            Rectangle {
+                vertical-stretch: 1;
+                Flickable {
+                    width: 100%;
+                    height: 100%;
+                    viewport-width: self.width;
+                    viewport-height: col.preferred-height;
+                    col := VerticalLayout {
+                        padding: 12px;
+                        padding-top: 4px;
+                        spacing: 12px;
+                        alignment: start;
+                        for s in root.subjects : SubjectCard {
+                            subject: s.subject;
+                            average: s.average;
+                            average-val: s.average-val;
+                            marks: s.marks;
+                            simulate => {
+                                root.sim-subject = s.subject;
+                                root.sim-avg = s.average-val;
+                                root.sim-count = s.marks.length;
+                                root.sim-avg-str = s.average;
+                                root.sim-marks = s.marks;
+                                root.sim-open = true;
+                            }
+                            show-chart => {
+                                root.chart-subject = s.subject;
+                                root.chart-open = true;
+                                root.open-chart(s.subject);
+                            }
+                        }
+                    }
+                }
+                if root.loading && root.subjects.length == 0 : Md3LoadingIndicator {
+                    width: 46px; height: 46px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+                if !root.loading && root.subjects.length == 0 : VerticalLayout {
+                    alignment: center;
+                    spacing: 12px;
+                    HorizontalLayout {
+                        alignment: center;
+                        Path {
+                            width: 52px; height: 52px;
+                            viewbox-width: 24; viewbox-height: 24;
+                            commands: root.error != ""
+                                ? "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
+                                : "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-5h2v5zm4 0h-2v-8h2v8zm4 0h-2v-3h2v3z";
+                            fill: root.error != "" ? Theme.error : Theme.on-surface-variant.transparentize(0.3);
+                        }
+                    }
+                    Text {
+                        text: root.error != "" ? root.error : "За эту четверть оценок нет";
+                        font-size: 14px; font-weight: 500;
+                        color: Theme.on-surface-variant;
+                        horizontal-alignment: center; wrap: word-wrap;
+                    }
+                }
+            }
+        }
+
+        // ================= ГОДОВАЯ =================
+        if root.active-mode == 1 : Rectangle {
+            vertical-stretch: 1;
+            Flickable {
+                width: 100%;
+                height: 100%;
+                viewport-width: self.width;
+                viewport-height: fcol.preferred-height;
+                fcol := VerticalLayout {
+                    padding: 12px;
+                    padding-top: 4px;
+                    spacing: 12px;
+                    alignment: start;
+                    for s in root.finals : SubjectFinalsCard {
+                        subject: s.subject;
+                        marks: s.marks;
+                    }
+                }
+            }
+            if root.loading && root.finals.length == 0 : Md3LoadingIndicator {
+                width: 46px; height: 46px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+            if !root.loading && root.finals.length == 0 : VerticalLayout {
+                alignment: center;
+                spacing: 12px;
+                HorizontalLayout {
+                    alignment: center;
+                    Path {
+                        width: 52px; height: 52px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: root.error != ""
+                            ? "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
+                            : "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-5h2v5zm4 0h-2v-8h2v8zm4 0h-2v-3h2v3z";
+                        fill: root.error != "" ? Theme.error : Theme.on-surface-variant.transparentize(0.3);
+                    }
+                }
+                Text {
+                    text: root.error != "" ? root.error : "Итоговых оценок пока нет";
+                    font-size: 14px; font-weight: 500;
+                    color: Theme.on-surface-variant;
+                    horizontal-alignment: center; wrap: word-wrap;
+                }
+            }
+        }
+    }
+
+    // --- Оверлей симулятора оценок ---
+    if root.sim-open : SimulatorSheet {
+        width: 100%;
+        height: 100%;
+        subject: root.sim-subject;
+        real-avg: root.sim-avg;
+        real-count: root.sim-count;
+        real-avg-str: root.sim-avg-str;
+        source-marks: root.sim-marks;
+        close => { root.sim-open = false; }
+    }
+
+    // --- Оверлей графика ус��еваемости ---
+    if root.chart-open : ChartSheet {
+        width: 100%;
+        height: 100%;
+        subject: root.chart-subject;
+        points: root.chart-points;
+        dividers: root.chart-dividers;
+        line-path: root.chart-line-path;
+        has-data: root.chart-has-data;
+        loading: root.chart-loading;
+        close => { root.chart-open = false; }
+    }
+}
+
+// ============================================================
+//  Календарные вычисления (чистая арифметика, без локали)
+// ============================================================
+

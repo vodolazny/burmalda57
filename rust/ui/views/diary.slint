@@ -1,0 +1,453 @@
+import { Theme, CalMath } from "../theme.slint";
+import { Lesson, RecentGrade } from "../types.slint";
+import { Md3LoadingIndicator } from "../components/loading.slint";
+import { RecentGradeCard, LessonCard } from "../components/cards.slint";
+import { MaterialButton, SegmentedButtons } from "../components/buttons.slint";
+import { EventSheet } from "event_sheet.slint";
+import { RuCalendar } from "calendar.slint";
+
+export component DiaryView inherits Rectangle {
+    in property <[RecentGrade]> recent-grades;
+    in property <string> current-date;
+    in property <[Lesson]> lessons;
+    in property <string> net-error;
+    in property <string> net-stale;
+    in property <bool> loading;
+    callback prev-day();
+    callback next-day();
+    callback open-calendar();
+    callback refresh();
+    // Числовая текущая дата (для выбора дня недели)
+    in property <int> cur-year;
+    in property <int> cur-month;
+    in property <int> cur-day;
+    callback pick-date(int, int, int);
+    // Свои события пользователя
+    callback add-event(string, string, string);
+    callback delete-event(string);
+    callback toggle-homework(string, bool);
+    callback save-note(string, string);
+    in-out property <bool> event-open: false;
+    background: Theme.background;
+
+    // Лента показывается только при наличии оценок
+    property <bool> has-grades: root.recent-grades.length > 0;
+
+    // Идёт редактирование заметки (показана клавиатура)
+    property <bool> note-editing: false;
+    // Примерная высота клавиатуры (около 42% экрана)
+    property <length> keyboard-height: max(260px, root.height * 0.42);
+    // Запас снизу списка на время редактирования
+    property <length> keyboard-reserve: root.keyboard-height + 48px;
+    // Куда прокрутить: положение и высота активного поля заметки
+    property <length> note-y: 0px;
+    property <length> note-h: 0px;
+
+    // Короткая дата для шапки: ДД.ММ
+    property <string> dd: root.cur-day < 10 ? "0\{root.cur-day}" : "\{root.cur-day}";
+    property <string> mm: root.cur-month < 10 ? "0\{root.cur-month}" : "\{root.cur-month}";
+    property <string> date-short: root.cur-day == 0 ? root.current-date : root.dd + "." + root.mm;
+
+    // --- Pull-to-refresh ---
+    property <length> pull: 0;          // текущее натяжение (px)
+    property <length> pull-trigger: 72px; // порог срабатывания
+
+    // --- Fade при смене дня ---
+    property <float> list-fade: 1.0;
+    animate list-fade { duration: 150ms; easing: ease-in-out; }
+    changed current-date => {
+        // Сменили день — карточки пересобрались, фокус ушёл вместе с
+        // старым полем и changed has-focus не приходит — снимаем запас
+        // под клавиатуру сами, иначе снизу оставалась огромная дыра.
+        root.note-editing = false;
+        root.list-fade = 0.25;
+        // Императивно запускаем таймер: restart() не переопределял
+        // константный binding `running: false`, из-за чего таймер не
+        // срабатывал и список навсегда оставался затемнён на 25%.
+        fade-timer.running = true;
+    }
+    fade-timer := Timer {
+        interval: 150ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.list-fade = 1.0;
+        }
+    }
+
+    VerticalLayout {
+        // --- Верхняя панель навигации по дням (не сворачивается) ---
+        Rectangle {
+            height: 88px;
+            HorizontalLayout {
+                padding-left: 0px;
+                padding-right: 0px;
+                padding-top: 14px;
+                alignment: space-between;
+
+                Rectangle {
+                    width: 96px; height: 74px;
+                    // Зона тапа — весь угол (96×74), визуальный кружок 46px по центру
+                    Rectangle {
+                        width: 46px; height: 46px; border-radius: 23px;
+                        background: pa.pressed ? Theme.secondary-container.darker(0.08) : Theme.secondary-container;
+                        Text { text: "‹"; font-size: 24px; color: Theme.on-secondary-container; horizontal-alignment: center; vertical-alignment: center; }
+                    }
+                    pa := TouchArea { clicked => { root.prev-day(); } }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 72px;
+                    border-radius: 28px;
+                    background: da.pressed ? Theme.secondary-container.transparentize(0.5) : transparent;
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 6px;
+                        Text {
+                            text: root.date-short;
+                            font-size: 22px; font-weight: 700;
+                            color: Theme.on-surface;
+                            vertical-alignment: center;
+                        }
+                    }
+                    da := TouchArea { clicked => { root.open-calendar(); } }
+                }
+
+                Rectangle {
+                    width: 96px; height: 74px;
+                    // Зона тапа — весь угол (96×74), визуальный кружок 46px по ц��нтру
+                    Rectangle {
+                        width: 46px; height: 46px; border-radius: 23px;
+                        background: na.pressed ? Theme.secondary-container.darker(0.08) : Theme.secondary-container;
+                        Text { text: "›"; font-size: 24px; color: Theme.on-secondary-container; horizontal-alignment: center; vertical-alignment: center; }
+                    }
+                    na := TouchArea { clicked => { root.next-day(); } }
+                }
+            }
+        }
+
+        // --- Выбор дня недели (M3 Segmented Buttons) ---
+        Rectangle {
+            height: 56px;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                VerticalLayout {
+                    alignment: center;
+                    SegmentedButtons {
+                        options: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+                        selected: CalMath.dow-mon(root.cur-year, root.cur-month, root.cur-day);
+                        select(i) => {
+                            root.pick-date(
+                                CalMath.dec-year(CalMath.shift-date(root.cur-year, root.cur-month, root.cur-day, i - CalMath.dow-mon(root.cur-year, root.cur-month, root.cur-day))),
+                                CalMath.dec-month(CalMath.shift-date(root.cur-year, root.cur-month, root.cur-day, i - CalMath.dow-mon(root.cur-year, root.cur-month, root.cur-day))),
+                                CalMath.dec-day(CalMath.shift-date(root.cur-year, root.cur-month, root.cur-day, i - CalMath.dow-mon(root.cur-year, root.cur-month, root.cur-day)))
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Ба��нер сбоя API: причина + время последних данных + [Обновить] ---
+        if root.net-error != "" : Rectangle {
+            // Компактная плашка: без подстроки совсем низкая
+            min-height: 42px;
+            background: Theme.error-container;
+
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 10px;
+                spacing: 8px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+
+                VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 17px; height: 17px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z";
+                        fill: Theme.on-error-container;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: root.net-error;
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: Theme.on-error-container;
+                        wrap: word-wrap;
+                    }
+                    // Показываем, насколько устарели данные на экране
+                    if root.net-stale != "" : Text {
+                        text: root.net-stale;
+                        font-size: 11px;
+                        color: Theme.on-error-container.transparentize(0.25);
+                        overflow: elide;
+                        wrap: no-wrap;
+                    }
+                }
+                // Кнопка повторной загрузки (outlined на error-container)
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        height: 30px;
+                        width: rf.preferred-width + 22px;
+                        border-radius: 15px;
+                        border-width: 1px;
+                        border-color: Theme.on-error-container.transparentize(0.5);
+                        background: rf-ta.pressed
+                            ? Theme.on-error-container.transparentize(0.82)
+                            : transparent;
+                        rf := Text {
+                            text: "Обновить";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: Theme.on-error-container;
+                        }
+                        rf-ta := TouchArea {
+                            clicked => { root.refresh(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Лента недавних оценок (статичная, только если есть оценки) ---
+        if root.has-grades : Rectangle {
+            height: 140px;
+            clip: true;
+
+            Flickable {
+                x: 0; y: 0;
+                width: parent.width; height: 140px;
+                viewport-width: max(parent.width, root.recent-grades.length * 142px + 12px);
+                viewport-height: self.height;
+
+                HorizontalLayout {
+                    y: 12px; height: 116px;
+                    padding-left: 12px; padding-right: 12px;
+                    spacing: 10px;
+
+                    for g in root.recent-grades : RecentGradeCard {
+                        subject: g.subject;
+                        mark: g.mark;
+                        mark-val: g.mark-val;
+                        date: g.date;
+                    }
+                }
+            }
+        }
+
+        // --- Список уроков / пустое состояние (с pull-to-refresh и fade свайпа) ---
+        // --- Список уроков / пустое состояние (с pull-to-refresh) ---
+        list-area := Rectangle {
+            vertical-stretch: 1;
+            clip: true;
+
+            // Свайп между днями убран — листаем стрелками сверху и выбором дня
+            // недели (Segmented Buttons). Так в��ртикальный скролл уроков работа��т
+            // без конфликтов жестов.
+            flick := Flickable {
+                width: 100%;
+                height: 100%;
+                viewport-width: flick.width;
+                viewport-height: lessons-col.preferred-height;
+
+                changed viewport-y => {
+                    if (self.viewport-y > 0px && !root.loading) {
+                        root.pull = self.viewport-y;
+                        if (self.viewport-y >= root.pull-trigger) {
+                            root.refresh();
+                            root.pull = 0px;
+                        }
+                    } else {
+                        root.pull = 0px;
+                    }
+                }
+
+                lessons-col := VerticalLayout {
+                    width: flick.width;
+                    alignment: start;
+                    padding-top: 12px;
+                    // Запас снизу под FAB (56px кнопка + 20px отступ + воздух):
+                    // иначе кнопка «+» перекрывала последний урок и его нельзя
+                    // было раскрыть.
+                    // Пока пишется заметка — дополнительный запас под клавиатуру,
+                    // иначе последние уроки нельзя прокрутить вверх.
+                    padding-bottom: root.note-editing ? root.keyboard-reserve : 96px;
+
+                    // Обертка контента для применения fade-эффекта из DiaryView
+                    content-opacity := Rectangle {
+                        width: 100%;
+                        opacity: root.list-fade; 
+
+                        VerticalLayout {
+                            alignment: start;
+                            for l in root.lessons : LessonCard {
+                                number: l.number;
+                                time: l.time;
+                                subject: l.subject;
+                                room: l.room;
+                                homework: l.homework;
+                                hw-hint: l.hw-hint;
+                                topic: l.topic;
+                                teacher: l.teacher;
+                                mark: l.mark;
+                                mark-value: l.mark-value;
+                                absence: l.absence;
+                                grade-type: l.grade-type;
+                                is-event: l.is-event;
+                                event-id: l.event-id;
+                                hw-done: l.hw-done;
+                                hw-key: l.hw-key;
+                                note: l.note;
+                                note-key: l.note-key;
+                                delete-requested => { root.delete-event(l.event-id); }
+                                toggle-homework(k, d) => { root.toggle-homework(k, d); }
+                                save-note(k, t) => { root.save-note(k, t); }
+                                // Фокус на заметке: запоминаем геометрию поля и доворачиваем
+                                // список на следующем кадре (когда уже учтён запас снизу).
+                                note-focused(active, abs-y, box-h) => {
+                                    root.note-editing = active;
+                                    if (active) {
+                                        root.note-y = abs-y;
+                                        root.note-h = box-h;
+                                        kb-timer.running = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Доворот списка под клавиатуру: сдвигаем РОВНО настолько, чтобы поле
+            // целиком попало в видимую часть над клавиатурой.
+            // Задержка нужна, чтобы раскрытие деталей и новый padding
+            // успели примениться — иначе скакало то слишком высоко, то никуда.
+            kb-timer := Timer {
+                interval: 120ms;
+                running: false;
+                triggered => {
+                    self.running = false;
+                    flick.viewport-y = min(0px, max(
+                        -max(0px, flick.viewport-height - flick.height),
+                        flick.viewport-y - (
+                            (root.note-y + root.note-h + 12px) > (flick.absolute-position.y + flick.height - root.keyboard-height)
+                                ? (root.note-y + root.note-h + 12px) - (flick.absolute-position.y + flick.height - root.keyboard-height)
+                                : (root.note-y < flick.absolute-position.y + 8px
+                                    ? root.note-y - (flick.absolute-position.y + 8px)
+                                    : 0px)
+                        )
+                    ));
+                }
+            }
+
+            // Индикатор Pull-to-refresh 
+            if flick.viewport-y > 5px && !root.loading : Rectangle {
+                property <length> display-pull: min(flick.viewport-y, 70px);
+                y: self.display-pull - 45px;
+                height: 40px; width: 40px;
+                x: (parent.width - self.width) / 2;
+                border-radius: 20px;
+                background: Theme.surface-container-high;
+                drop-shadow-blur: 6px;
+                drop-shadow-color: Theme.shadow;
+                opacity: min(flick.viewport-y / root.pull-trigger, 1.0);
+                
+                Text {
+                    width: 100%;
+                    height: 100%;
+                    text: flick.viewport-y >= root.pull-trigger ? "↑" : "��";
+                    font-size: 18px;
+                    color: Theme.primary;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            if root.loading : Rectangle {
+                y: 16px;
+                height: 46px; width: 46px;
+                x: (parent.width - self.width) / 2;
+                border-radius: 23px;
+                background: Theme.surface-container-high;
+                drop-shadow-blur: 10px;
+                drop-shadow-color: Theme.shadow;
+                Md3LoadingIndicator {
+                    width: 30px;
+                    height: 30px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+            }
+
+            // Пустой день
+            if root.lessons.length == 0 && root.net-error == "" : VerticalLayout {
+                alignment: center;
+                spacing: 12px;
+                opacity: root.list-fade;
+                
+                HorizontalLayout {
+                    alignment: center;
+                    Path {
+                        width: 52px; height: 52px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: "M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM4 10.5H1v2h3v-2zm9-9.95h-2V3.5h2V.55zm7.45 3.91l-1.41-1.41-1.79 1.79 1.41 1.41 1.79-1.79zm-3.21 13.7l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM20 10.5v2h3v-2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm-1 4h2v2.95h-2V19.5zm-7.45-.96l1.41 1.41 1.79-1.8-1.41-1.41-1.79 1.8z";
+                        fill: Theme.on-surface-variant.transparentize(0.2);
+                    }
+                }
+                Text {
+                    text: "В этот день уроков нет";
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: Theme.on-surface-variant;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+
+    // --- FAB: добавить своё событие (правый нижний угол) ---
+    Rectangle {
+        width: 56px;
+        height: 56px;
+        x: parent.width - self.width - 16px;
+        y: parent.height - self.height - 16px;
+        border-radius: 18px;
+        background: fab-ta.pressed ? Theme.primary-container.darker(0.08) : Theme.primary-container;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: Theme.shadow;
+        drop-shadow-offset-y: 3px;
+        Path {
+            width: 26px;
+            height: 26px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: "M12 5 L12 19 M5 12 L19 12";
+            fill: transparent;
+            stroke: Theme.on-primary-container;
+            stroke-width: 2.5px;
+        }
+        fab-ta := TouchArea {
+            clicked => { root.event-open = true; }
+        }
+    }
+
+    // --- Шторка создания события ---
+    if root.event-open : EventSheet {
+        width: 100%;
+        height: 100%;
+        save(n, s, e) => { root.add-event(n, s, e); }
+        close => { root.event-open = false; }
+    }
+}
+
+

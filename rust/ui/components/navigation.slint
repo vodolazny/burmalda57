@@ -1,0 +1,69 @@
+import { Theme } from "../theme.slint";
+
+export component NavIcon inherits Rectangle {
+    in property <int> id;
+    in property <bool> selected;
+    in property <color> tint;
+
+    property <string> cmd-outline:
+        root.id == 0 ? "M5 6 a2 2 0 0 1 2 -2 h10 a2 2 0 0 1 2 2 v12 a2 2 0 0 1 -2 2 h-10 a2 2 0 0 1 -2 -2 z M5 9 h14 M9 3 v3 M15 3 v3"
+      : root.id == 1 ? "M4 21 h16 M6 21 v-6 M12 21 v-12 M18 21 v-9"
+      :                "M12 12 a4 4 0 1 0 0 -8 a4 4 0 1 0 0 8 z M5 21 a7 7 0 0 1 14 0";
+
+    property <string> cmd-fill:
+        root.id == 0 ? "M6 4 h12 a2 2 0 0 1 2 2 v12 a2 2 0 0 1 -2 2 h-12 a2 2 0 0 1 -2 -2 v-12 a2 2 0 0 1 2 -2 z M8 2 v3 M16 2 v3"
+      : root.id == 1 ? "M5 13 h3 v7 h-3 z M10.5 8 h3 v12 h-3 z M16 11 h3 v9 h-3 z"
+      :                "M12 12 a4 4 0 1 0 0 -8 a4 4 0 1 0 0 8 z M4 21 a8 8 0 0 1 16 0 z";
+
+    Path {
+        width: 24px; height: 24px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        viewbox-x: 0; viewbox-y: 0;
+        viewbox-width: 24; viewbox-height: 24;
+        commands: root.selected ? root.cmd-fill : root.cmd-outline;
+        fill: root.selected ? root.tint : transparent;
+        stroke: root.selected ? transparent : root.tint;
+        stroke-width: 1.8px;
+    }
+}
+
+
+export component NavItem inherits Rectangle {
+    in property <int> icon-id;
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+        HorizontalLayout {
+            alignment: center;
+            // Таблетка-подложка активного таба (M3 active indicator)
+            Rectangle {
+                width: 64px;
+                height: 32px;
+                border-radius: 16px;
+                background: root.selected ? Theme.secondary-container : transparent;
+                animate background { duration: 150ms; }
+                NavIcon {
+                    width: 100%; height: 100%;
+                    id: root.icon-id;
+                    selected: root.selected;
+                    tint: root.selected ? Theme.on-secondary-container : Theme.on-surface-variant;
+                }
+            }
+        }
+        Text {
+            text: root.label;
+            font-size: 12px;
+            horizontal-alignment: center;
+            color: root.selected ? Theme.on-surface : Theme.on-surface-variant;
+            font-weight: root.selected ? 700 : 500;
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+

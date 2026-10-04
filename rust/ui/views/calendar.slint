@@ -1,0 +1,182 @@
+import { Theme, CalMath } from "../theme.slint";
+
+export component RuCalendar inherits Rectangle {
+    in property <int> init-year;
+    in property <int> init-month;
+    in property <int> init-day;
+    callback accepted(int, int, int);   // год, месяц, день
+    callback canceled();
+
+    property <int> view-year: root.init-year;
+    property <int> view-month: root.init-month;
+    property <int> first-dow: CalMath.first-dow-mon(root.view-year, root.view-month);
+    property <int> days: CalMath.days-in-month(root.view-year, root.view-month);
+
+    // Затемняющий фон
+    background: #00000066;
+    // Тап вне карточки — отмена
+    TouchArea { clicked => { root.canceled(); } }
+
+    // Карточка календаря
+    Rectangle {
+        width: min(parent.width - 48px, 360px);
+        height: 456px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: Theme.radius-xl;
+        background: Theme.surface-container-high;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: Theme.shadow;
+        drop-shadow-offset-y: 8px;
+
+        // Блокируем «протекание» тапов на фон
+        TouchArea {}
+
+        // Св��йп влево/вправо — смена месяца; тапы по дням проходят к детям
+        month-swipe := SwipeGestureHandler {
+            width: 100%;
+            height: 100%;
+            handle-swipe-left: true;
+            handle-swipe-right: true;
+            swiped => {
+                if (self.current-position.x < self.pressed-position.x) {
+                    // следующий месяц
+                    if (root.view-month == 12) { root.view-month = 1; root.view-year += 1; }
+                    else { root.view-month += 1; }
+                } else {
+                    // предыдущий месяц
+                    if (root.view-month == 1) { root.view-month = 12; root.view-year -= 1; }
+                    else { root.view-month -= 1; }
+                }
+            }
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 6px;
+
+            // --- Заголовок: ‹ Месяц Год › ---
+            HorizontalLayout {
+                height: 44px;
+                spacing: 4px;
+
+                Rectangle {
+                    width: 40px; height: 40px; border-radius: 20px;
+                    background: pm.pressed ? Theme.secondary-container : transparent;
+                    VerticalLayout {
+                        alignment: center;
+                        HorizontalLayout {
+                            alignment: center;
+                            Path {
+                                width: 20px; height: 20px;
+                                viewbox-width: 24; viewbox-height: 24;
+                                commands: "M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z";
+                                fill: Theme.on-surface;
+                            }
+                        }
+                    }
+                    pm := TouchArea { clicked => {
+                        if (root.view-month == 1) { root.view-month = 12; root.view-year -= 1; }
+                        else { root.view-month -= 1; }
+                    } }
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: "\{CalMath.months[root.view-month - 1]} \{root.view-year}";
+                    font-size: 18px; font-weight: 700; color: Theme.on-surface;
+                    horizontal-alignment: center; vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: 40px; height: 40px; border-radius: 20px;
+                    background: nm.pressed ? Theme.secondary-container : transparent;
+                    VerticalLayout {
+                        alignment: center;
+                        HorizontalLayout {
+                            alignment: center;
+                            Path {
+                                width: 20px; height: 20px;
+                                viewbox-width: 24; viewbox-height: 24;
+                                commands: "M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z";
+                                fill: Theme.on-surface;
+                            }
+                        }
+                    }
+                    nm := TouchArea { clicked => {
+                        if (root.view-month == 12) { root.view-month = 1; root.view-year += 1; }
+                        else { root.view-month += 1; }
+                    } }
+                }
+            }
+
+            // --- Шапка дней недели (Пн ... Вс) ---
+            HorizontalLayout {
+                height: 30px;
+                for wd[idx] in CalMath.weekdays : Rectangle {
+                    horizontal-stretch: 1;
+                    Text {
+                        text: wd;
+                        font-size: 12px; font-weight: 600;
+                        horizontal-alignment: center; vertical-alignment: center;
+                        color: idx >= 5 ? Theme.mark-2 : Theme.on-surface-variant;
+                    }
+                }
+            }
+
+            // --- Сетка 6×7 --- сикссеве��
+            for row in 6 : HorizontalLayout {
+                height: 44px;
+                for col in 7 : cell := Rectangle {
+                    horizontal-stretch: 1;
+                    property <int> daynum: row * 7 + col - root.first-dow + 1;
+                    property <bool> valid: cell.daynum >= 1 && cell.daynum <= root.days;
+                    property <bool> is-sel: cell.valid
+                        && cell.daynum == root.init-day
+                        && root.view-month == root.init-month
+                        && root.view-year == root.init-year;
+                    property <bool> weekend: col >= 5;
+
+                    Rectangle {
+                        width: 40px; height: 40px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 20px;
+                        background: cell.is-sel ? Theme.primary
+                                  : (ta.pressed && cell.valid) ? Theme.secondary-container
+                                  : transparent;
+                        Text {
+                            width: 100%; height: 100%;
+                            text: cell.valid ? "\{cell.daynum}" : "";
+                            font-size: 15px;
+                            font-weight: cell.is-sel ? 700 : 500;
+                            color: cell.is-sel ? Theme.on-primary
+                                 : cell.weekend ? Theme.mark-2
+                                 : Theme.on-surface;
+                            horizontal-alignment: center; vertical-alignment: center;
+                        }
+                    }
+                    ta := TouchArea {
+                        clicked => {
+                            if (cell.valid) { root.accepted(root.view-year, root.view-month, cell.daynum); }
+                        }
+                    }
+                }
+            }
+
+            // --- Нижняя строка действий ---
+            HorizontalLayout {
+                height: 44px;
+                alignment: end;
+                Rectangle {
+                    width: 108px; height: 40px; border-radius: 20px;
+                    background: ca.pressed ? Theme.primary.transparentize(0.88) : transparent;
+                    Text { text: "Отмена"; font-size: 15px; font-weight: 600; color: Theme.primary; horizontal-alignment: center; vertical-alignment: center; }
+                    ca := TouchArea { clicked => { root.canceled(); } }
+                }
+            }
+        }
+        }
+    }
+}
+
+

@@ -1,0 +1,844 @@
+import { Theme } from "../theme.slint";
+import { GradeMark, FinalMark } from "../types.slint";
+import { MarkColor, MarkToken, MarkMicroCard, FinalCell } from "marks.slint";
+import { Md3LoadingIndicator } from "loading.slint";
+
+export component DetailRow inherits HorizontalLayout {
+    in property <string> icon;
+    in property <string> label;
+    in property <string> value;
+    spacing: 8px;
+
+    VerticalLayout {
+        alignment: start;
+        padding-top: 1px;
+        Path {
+            width: 15px;
+            height: 15px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: root.icon;
+            fill: transparent;
+            stroke: Theme.on-surface-variant;
+            stroke-width: 1.6px;
+        }
+    }
+    VerticalLayout {
+        horizontal-stretch: 1;
+        spacing: 1px;
+        Text {
+            text: root.label;
+            font-size: 10px;
+            font-weight: 600;
+            color: Theme.on-surface-variant.transparentize(0.3);
+        }
+        Text {
+            text: root.value;
+            font-size: 13px;
+            color: Theme.on-surface;
+            wrap: word-wrap;
+        }
+    }
+}
+
+// ============================================================
+//  Карточка урока — раскрывается по тапу (тема + ДЗ)
+// ============================================================
+
+export component InfoRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    spacing: 8px;
+    Text {
+        text: root.label;
+        font-size: 14px;
+        color: Theme.on-surface-variant;
+        width: 92px;
+    }
+    Text {
+        text: root.value;
+        font-size: 14px;
+        font-weight: 600;
+        color: Theme.on-surface;
+        wrap: word-wrap;
+    }
+}
+
+
+export component RecentGradeCard inherits Rectangle {
+    in property <string> subject;
+    in property <string> mark;
+    in property <int> mark-val;
+    in property <string> date;
+
+    width: 132px;
+    height: 116px;
+    border-radius: Theme.radius-l;
+    background: Theme.surface-container-high;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+
+        // Дата выставления оценки
+        Text {
+            text: root.date;
+            font-size: 11px;
+            font-weight: 600;
+            color: Theme.on-surface-variant;
+            overflow: elide;
+            wrap: no-wrap;
+        }
+
+        // Крупный жетон оценки
+        HorizontalLayout {
+            alignment: start;
+            MarkToken {
+                text: root.mark;
+                value: root.mark-val;
+                size: 44px;
+                font: 22px;
+            }
+        }
+
+        // Прижимаем предмет к низу карточки
+        Rectangle { vertical-stretch: 1; }
+
+        Text {
+            text: root.subject;
+            font-size: 12px;
+            font-weight: 500;
+            color: Theme.on-surface;
+            overflow: elide;
+            wrap: no-wrap;
+        }
+    }
+}
+
+// M3 filled / outlined кнопка
+
+export component LessonCard inherits Rectangle {
+    in property <int>    number;
+    in property <string> time;
+    in property <string> subject;
+    in property <string> room;
+    in property <string> homework;
+    in property <string> hw-hint;
+    in property <string> topic;
+    in property <string> teacher;
+    in property <string> mark;
+    in property <int>    mark-value;
+    in property <string> absence;
+    in property <string> grade-type;
+    in property <bool>   is-event;
+    in property <string> event-id;
+    in property <bool>   hw-done;
+    in property <string> hw-key;
+    in property <string> note;
+    in property <string> note-key;
+    callback delete-requested();
+    callback toggle-homework(string, bool);
+    callback save-note(string, string);
+    // Сообщаем списку: начали/закончили писать, абсолютная y поля и его
+    // высота — чтобы он поднял поле ровно настолько, сколько нужно.
+    callback note-focused(bool, length, length);
+
+    // Локальное состояние чекбокса ДЗ: инициализируется из hw-done,
+    // после тапа — своё значение (перебивает биндинг для этого инстанса).
+    property <bool> done: root.hw-done;
+    property <bool> has-hw: root.homework != "";
+    property <bool> has-topic: root.topic != "";
+    // Раскрывается ЛЮБОЙ урок (кроме своих событий): даже если нет ни темы,
+    // ни ДЗ — внутри доступна заметка. Шеврон поэтому виден всегда.
+    property <bool> has-details: !root.is-event;
+    // Текущий текст заметки: инициализируется из модели, но обновляется сразу
+    // при вводе — иначе индикатор карандаша появлялся только после
+    // перезагрузки дня (модель обновляется из Rust только там).
+    property <string> note-text: root.note;
+    property <bool> has-note: root.note-text != "";
+    property <bool> has-absence: root.absence != "";
+    property <bool> has-gtype: root.grade-type != "";
+    property <bool> expanded: false;
+    // Показать короткое «Сохранено» после autosave заметки
+    property <bool> note-saved: false;
+
+    // Высота = высота контента. Плавность даёт анимация высоты блока
+    // деталей (details-clip) ниже: card.preferred-height меняется покадрово.
+    // min/max-height (не height!) — потому что LessonCard лежит в VerticalLayout,
+    // который игнорирует явную height (из-за этого карточка и прыгала).
+    min-height: card.preferred-height + 10px;
+    max-height: self.min-height;
+    background: transparent;
+
+    card := Rectangle {
+        x: 12px;
+        y: 5px;
+        width: parent.width - 24px;
+        height: parent.height - 10px;
+        border-radius: Theme.radius-l;
+        background: Theme.surface-container;
+        clip: true;
+
+        // Тап по карточке — раскрыть/свернуть. Объявлен ДО контента, чтобы
+        // интерактивные элементы (чекбокс ДЗ, удаление) были поверх и ловили тап.
+        ta := TouchArea {
+            enabled: root.has-details;
+            clicked => {
+                if (root.has-details) {
+                    // Сворачиваем карточку — снимаем фокус с заметки и сохраняем,
+                    // иначе клавиатура оставалась и текст шёл в скрытое поле.
+                    if (root.expanded && note-in.has-focus) {
+                        note-timer.running = false;
+                        root.save-note(root.note-key, note-in.text);
+                        note-in.clear-focus();
+                    }
+                    root.expanded = !root.expanded;
+                }
+            }
+        }
+
+        VerticalLayout {
+            padding: 12px;
+            spacing: 0px;
+
+            // --- Основная строка урока ---
+            HorizontalLayout {
+                spacing: 12px;
+
+                // Leading: номер урока (или иконка-звёздочка для события)
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 20px;
+                        background: root.is-event ? Theme.primary-container : Theme.secondary-container;
+                        if !root.is-event : Text {
+                            text: "\{root.number}";
+                            font-size: 17px;
+                            font-weight: 700;
+                            color: Theme.on-secondary-container;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        if root.is-event : Path {
+                            width: 20px;
+                            height: 20px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: "M12 3 L14.6 8.3 L20.4 9.1 L16.2 13.2 L17.2 19 L12 16.3 L6.8 19 L7.8 13.2 L3.6 9.1 L9.4 8.3 Z";
+                            fill: Theme.on-primary-container;
+                            stroke: transparent;
+                        }
+                    }
+                }
+
+                // Контент: растягивается на всё свободное место
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: root.subject;
+                        font-size: 15px;
+                        font-weight: 600;
+                        color: Theme.on-surface;
+                        overflow: elide;
+                        wrap: no-wrap;
+                    }
+                    Text {
+                        text: root.teacher + (root.room != "" ? "  ·  " + root.room : "");
+                        font-size: 12px;
+                        color: Theme.on-surface-variant;
+                        overflow: elide;
+                        wrap: no-wrap;
+                    }
+                    Text {
+                        text: root.time;
+                        font-size: 11px;
+                        color: Theme.on-surface-variant.transparentize(0.4);
+                        overflow: elide;
+                        wrap: no-wrap;
+                    }
+
+                    // Чип: вид работы (тональный)
+                    if root.has-gtype : HorizontalLayout {
+                        alignment: start;
+                        padding-top: 3px;
+
+                        Rectangle {
+                            background: Theme.secondary-container;
+                            border-radius: 6px;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                padding-top: 2px;
+                                padding-bottom: 2px;
+                                Text {
+                                    text: root.grade-type;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    color: Theme.on-secondary-container;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Trailing: оценка; если её нет, а есть пропуск — ставим пропуск
+                if root.mark-value > 0 : VerticalLayout {
+                    alignment: center;
+                    MarkToken {
+                        text: root.mark;
+                        value: root.mark-value;
+                        size: 44px;
+                        font: 20px;
+                    }
+                }
+                if root.mark-value <= 0 && root.has-absence : VerticalLayout {
+                    alignment: center;
+                    // Пропуск — такой же токен, как оценка
+                    MarkToken {
+                        text: "П";
+                        value: 2;
+                        size: 44px;
+                        font: 20px;
+                    }
+                }
+
+                // Кнопка удаления — только для своих событий
+                if root.is-event : VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 20px;
+                        background: del-ta.pressed ? Theme.error-container : transparent;
+                        Path {
+                            width: 15px;
+                            height: 15px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: "M6 6 L18 18 M6 18 L18 6";
+                            fill: transparent;
+                            stroke: Theme.on-surface-variant;
+                            stroke-width: 2px;
+                        }
+                        del-ta := TouchArea {
+                            clicked => { root.delete-requested(); }
+                        }
+                    }
+                }
+
+                // Статус-индикатор заметки в свёрнутой строке (карандаш)
+                if root.has-note : VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 16px;
+                        height: 16px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M4 20 h4 L19 9 a2 2 0 0 0 -3 -3 L5 17 z M15 6 l3 3";
+                        fill: transparent;
+                        stroke: Theme.primary;
+                        stroke-width: 1.8px;
+                    }
+                }
+
+                // Шеврон-индикатор раскрытия — виден у всех уроков
+                if root.has-details : VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 22px;
+                        height: 22px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: root.expanded ? "M6 15 L12 9 L18 15" : "M6 9 L12 15 L18 9";
+                        fill: transparent;
+                        stroke: Theme.on-surface-variant;
+                        stroke-width: 2px;
+                    }
+                }
+            }
+
+            // --- Раскрытые детали ---
+            // Всегда в дереве. Сворачивание/раскрытие — плавная анимация высоты
+            // контейнера с обрезкой (clip), поэтому контент не исчезает мгновенно
+            // и карточка не «прыгает» ни при открытии, ни при закрытии.
+            details-clip := Rectangle {
+                clip: true;
+                min-height: (root.expanded && root.has-details) ? details-inner.preferred-height : 0px;
+                max-height: self.min-height;
+                animate min-height { duration: 200ms; easing: ease-in-out; }
+
+                details-inner := VerticalLayout {
+                    x: 0;
+                    y: 0;
+                    width: parent.width;
+                    height: self.preferred-height;
+                    padding-top: 12px;
+                    spacing: 10px;
+
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.on-surface-variant.transparentize(0.88);
+                    }
+
+                    // Порядок внутри: Тема → ДЗ → Заметка
+                    if root.has-topic : DetailRow {
+                        label: "Тема урока";
+                        value: root.topic;
+                        icon: "M4 7 h16 M4 12 h16 M4 17 h11";
+                    }
+                    // Нет темы — говорим только про тему. Раньше один общий
+                    // текст на два поля читался как «ДЗ нет», даже когда ДЗ было.
+                    if !root.has-topic : Text {
+                        text: "Тема урока не указана";
+                        font-size: 13px;
+                        color: Theme.on-surface-variant.transparentize(0.25);
+                    }
+                    if root.has-hw : HorizontalLayout {
+                        spacing: 10px;
+                        DetailRow {
+                            horizontal-stretch: 1;
+                            label: root.hw-hint != ""
+                                ? "Домашнее задание · \{root.hw-hint}"
+                                : "Домашнее задание";
+                            value: root.homework;
+                            icon: "M7 3 h7 l4 4 v13 a1 1 0 0 1 -1 1 h-10 a1 1 0 0 1 -1 -1 v-17 a1 1 0 0 1 1 -1 z M14 3 v4 h4 M8.5 12.5 h7 M8.5 16 h5";
+                        }
+                        // Чекбокс «выполнено» — локальная отметка
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 28px;
+                                height: 28px;
+                                border-radius: 8px;
+                                background: root.done ? Theme.primary : transparent;
+                                border-width: root.done ? 0px : 2px;
+                                border-color: Theme.outline;
+                                Path {
+                                    width: 16px;
+                                    height: 16px;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    viewbox-width: 24;
+                                    viewbox-height: 24;
+                                    commands: root.done ? "M5 13 L10 18 L19 7" : "";
+                                    fill: transparent;
+                                    stroke: Theme.on-primary;
+                                    stroke-width: 2.5px;
+                                }
+                                hw-ta := TouchArea {
+                                    clicked => {
+                                        root.done = !root.done;
+                                        root.toggle-homework(root.hw-key, root.done);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // ДЗ нет — отдельная строка ровно про ДЗ, независимо от темы
+                    if !root.has-hw : Text {
+                        text: "Домашнее задание не указано";
+                        font-size: 13px;
+                        color: Theme.on-surface-variant.transparentize(0.25);
+                    }
+
+                    // --- Заметка (локальная, inline-редактирование с autosave) ---
+                    VerticalLayout {
+                        spacing: 6px;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            VerticalLayout {
+                                alignment: center;
+                                Path {
+                                    width: 15px;
+                                    height: 15px;
+                                    viewbox-width: 24;
+                                    viewbox-height: 24;
+                                    commands: "M4 20 h4 L19 9 a2 2 0 0 0 -3 -3 L5 17 z M15 6 l3 3";
+                                    fill: transparent;
+                                    stroke: Theme.on-surface-variant;
+                                    stroke-width: 1.6px;
+                                }
+                            }
+                            Text {
+                                horizontal-stretch: 1;
+                                text: "Заметка";
+                                font-size: 10px;
+                                font-weight: 600;
+                                color: Theme.on-surface-variant.transparentize(0.3);
+                                vertical-alignment: center;
+                            }
+                            // Подтверждение autosave
+                            if root.note-saved : Text {
+                                text: "Сохранено";
+                                font-size: 10px;
+                                color: Theme.primary;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        note-box := Rectangle {
+                            border-radius: Theme.radius-m;
+                            background: note-in.has-focus
+                                ? Theme.surface-container-highest
+                                : Theme.surface-container-high;
+                            min-height: max(44px, note-in.preferred-height + 22px);
+                            max-height: self.min-height;
+
+                            note-in := TextInput {
+                                x: 12px;
+                                width: parent.width - 24px;
+                                // Высота по содержимому + вертикальное центрирование:
+                                // иначе одна строка текста прилипала к верху поля.
+                                height: self.preferred-height;
+                                y: (parent.height - self.height) / 2;
+                                font-size: 13px;
+                                color: Theme.on-surface;
+                                single-line: false;
+                                wrap: word-wrap;
+                                text: root.note;
+                                // autosave: после паузы в наборе текста (не на каждый
+                                // символ — шифрование через Keystore не бесплатное)
+                                edited => {
+                                    // Сразу поднимаем индикатор в свёрнутой строке
+                                    root.note-text = self.text;
+                                    root.note-saved = false;
+                                    note-timer.running = true;
+                                }
+                                changed has-focus => {
+                                    // Сказать списку, куда прокрутиться (клавиатура)
+                                    root.note-focused(self.has-focus, note-box.absolute-position.y, note-box.height);
+                                    // Ушёл фокус — сохраняем сразу
+                                    if (!self.has-focus) {
+                                        note-timer.running = false;
+                                        root.save-note(root.note-key, self.text);
+                                    }
+                                }
+                            }
+
+                            // Плейсхолдер: векторный карандаш + текст.
+                            // Символ “✎” убран: в системном шрифте Android его нет и
+                            // вместо иконки рисовался пустой прямоугольник.
+                            if note-in.text == "" && !note-in.has-focus : HorizontalLayout {
+                                x: 12px;
+                                width: parent.width - 24px;
+                                height: 100%;
+                                spacing: 6px;
+                                alignment: start;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Path {
+                                        width: 14px;
+                                        height: 14px;
+                                        viewbox-width: 24;
+                                        viewbox-height: 24;
+                                        commands: "M4 20 h4 L19 9 a2 2 0 0 0 -3 -3 L5 17 z M15 6 l3 3";
+                                        fill: transparent;
+                                        stroke: Theme.on-surface-variant.transparentize(0.25);
+                                        stroke-width: 1.6px;
+                                    }
+                                }
+                                Text {
+                                    text: "Добавить заметку";
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                    color: Theme.on-surface-variant.transparentize(0.25);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+
+    // Таймер autosave заметки. running выставляем императивно (restart() не
+    // переопределяет константный binding — такая же история, как с fade-timer).
+    note-timer := Timer {
+        interval: 700ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.save-note(root.note-key, note-in.text);
+            root.note-saved = true;
+        }
+    }
+}
+
+// Монохромная векторная иконка: контурная (stroke) когда неактивна,
+// залитая (fill) когда активна. Один пак, стиль Material Symbols.
+// id: 0 — дневник (календарь), 1 — оценки (столбцы), 2 — профиль (человек)
+
+export component SubjectCard inherits Rectangle {
+    in property <string> subject;
+    in property <string> average;
+    in property <float> average-val;
+    in property <[GradeMark]> marks;
+    callback simulate();
+    callback show-chart();
+
+    // Цвет среднего по диапазонам (не по округлению)
+    property <int> avg-bucket: root.average-val >= 4.59 ? 5
+                             : root.average-val >= 3.59 ? 4
+                             : root.average-val >= 2.59 ? 3
+                             : root.average-val >  0.0 ? 2
+                             : 0;
+
+    height: layout.preferred-height;
+    border-radius: Theme.radius-l;
+    background: Theme.surface-container;
+
+    layout := VerticalLayout {
+        padding: 14px;
+        spacing: 12px;
+
+        // Шапка: название + бейдж среднего
+        HorizontalLayout {
+            spacing: 10px;
+
+            // Кнопка симулятора оценок 
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 15px;
+                background: sim-ta.pressed ? Theme.primary.transparentize(0.82) : Theme.surface-container-high;
+                // Иконка симулятор: калькулятор с плюсом
+                Path {
+                    width: 18px;
+                    height: 18px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: "M7 3 L17 3 L17 21 L7 21 Z M9.5 7 L14.5 7 M12 11.5 L12 16.5 M9.5 14 L14.5 14";
+                    fill: transparent;
+                    stroke: sim-ta.pressed ? Theme.primary : Theme.on-surface-variant;
+                    stroke-width: 1.8px;
+                }
+                sim-ta := TouchArea {
+                    clicked => { root.simulate(); }
+                }
+            }
+            // Кнопка графика успеваемости 
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 15px;
+                background: chart-ta.pressed ? Theme.primary.transparentize(0.82) : Theme.surface-container-high;
+                // Иконка линейного графика с точками
+                Path {
+                    width: 18px;
+                    height: 18px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: "M3 3 L3 21 L21 21 M7 14 L11 10 L14 13 L19 7";
+                    fill: transparent;
+                    stroke: chart-ta.pressed ? Theme.primary : Theme.on-surface-variant;
+                    stroke-width: 1.8px;
+                }
+                chart-ta := TouchArea {
+                    clicked => { root.show-chart(); }
+                }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.subject;
+                font-size: 16px;
+                font-weight: 700;
+                color: Theme.on-surface;
+                overflow: elide;
+                wrap: no-wrap;
+                vertical-alignment: center;
+            }
+            // Бейдж среднего балла
+            am := MarkColor { value: root.avg-bucket; }
+            Rectangle {
+                height: 30px;
+                width: badge.preferred-width + 20px;
+                border-radius: 15px;
+                background: am.fg.transparentize(0.86);
+                border-width: 1px;
+                border-color: am.fg.transparentize(0.7);
+                badge := HorizontalLayout {
+                    Text {
+                        text: root.average;
+                        font-size: 15px;
+                        font-weight: 800;
+                        color: am.fg;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // Оценки в несколько строк (перенос по ширине)
+        marks-wrap := Rectangle {
+            property <length> card-w: 46px;
+            property <length> card-h: 56px;
+            property <length> gap: 6px;
+            property <int> raw-cols: ((self.width + self.gap) / (self.card-w + self.gap)).floor();
+            property <int> cols: self.raw-cols < 1 ? 1 : self.raw-cols;
+            property <int> rows: root.marks.length == 0
+                ? 0
+                : ((root.marks.length + self.cols - 1) / self.cols).floor();
+            min-height: self.rows == 0 ? 0px : self.rows * (self.card-h + self.gap) - self.gap;
+            max-height: self.min-height;
+
+            for m[i] in root.marks : MarkMicroCard {
+                property <int> cell-row: (i / marks-wrap.cols).floor();
+                x: (i - self.cell-row * marks-wrap.cols) * (marks-wrap.card-w + marks-wrap.gap);
+                y: self.cell-row * (marks-wrap.card-h + marks-wrap.gap);
+                value: m.value;
+                date: m.date;
+            }
+        }
+    }
+
+}
+
+// Ячейка итоговой оценки: подпись периода + балл (цвет по значению)
+
+export component SubjectFinalsCard inherits Rectangle {
+    in property <string> subject;
+    in property <[FinalMark]> marks;
+
+    height: fl.preferred-height;
+    border-radius: Theme.radius-l;
+    background: Theme.surface-container;
+
+    fl := VerticalLayout {
+        padding: 14px;
+        spacing: 12px;
+
+        Text {
+            text: root.subject;
+            font-size: 15px;
+            font-weight: 700;
+            color: Theme.on-surface;
+            overflow: elide;
+            wrap: no-wrap;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            for m in root.marks : FinalCell {
+                horizontal-stretch: 1;
+                label: m.label;
+                average: m.average;
+                average-val: m.average-val;
+            }
+        }
+    }
+}
+
+// ============================================================
+//  Симулятор оценок
+// ============================================================
+// Степпер оценки: + добавить / − убрать (существующие и виртуальные)
+
+export component ChildItemCard inherits Rectangle {
+    in property <string> name;
+    in property <string> school-class;
+    in property <string> school-name;
+    in property <bool> selected;
+    callback clicked();
+
+    height: card-layout.preferred-height + 20px;
+    border-radius: Theme.radius-m;
+    background: root.selected ? Theme.primary-container.transparentize(0.4) : (ta.pressed ? Theme.surface-container-highest : Theme.surface-container-high);
+    border-width: root.selected ? 2px : 1px;
+    border-color: root.selected ? Theme.primary : Theme.outline-variant;
+    animate background { duration: 120ms; }
+
+    card-layout := HorizontalLayout {
+        padding: 12px;
+        spacing: 12px;
+
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                background: root.selected ? Theme.primary : Theme.secondary-container;
+                Path {
+                    width: 22px;
+                    height: 22px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z";
+                    fill: root.selected ? Theme.on-primary : Theme.on-secondary-container;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+
+            Text {
+                text: root.name;
+                font-size: 15px;
+                font-weight: 700;
+                color: Theme.on-surface;
+                overflow: elide;
+                wrap: no-wrap;
+            }
+            if root.school-class != "" : Text {
+                text: root.school-class + " класс";
+                font-size: 12px;
+                font-weight: 600;
+                color: Theme.primary;
+                overflow: elide;
+                wrap: no-wrap;
+            }
+            if root.school-name != "" : Text {
+                text: root.school-name;
+                font-size: 11px;
+                color: Theme.on-surface-variant;
+                overflow: elide;
+                wrap: no-wrap;
+            }
+        }
+
+        if root.selected : VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: 14px;
+                background: Theme.primary;
+                Path {
+                    width: 16px;
+                    height: 16px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z";
+                    fill: Theme.on-primary;
+                }
+            }
+        }
+    }
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+

@@ -1,0 +1,106 @@
+// Data structures used across Burmalda57
+
+export struct Lesson {
+    number: int,
+    time: string,
+    subject: string,
+    room: string,
+    homework: string,
+    // Пометка «задано 18.09», если ДЗ взято из HOMEWORK_PREVIOUS
+    hw-hint: string,
+    topic: string,
+    teacher: string,
+    mark: string,
+    mark-value: int,
+    absence: string,
+    grade-type: string,
+    is-event: bool,
+    event-id: string,
+    hw-done: bool,
+    hw-key: string,
+    // Локальная заметка к уроку и её ключ "дата|номер|предмет"
+    note: string,
+    note-key: string,
+}
+
+
+export struct ChildItem {
+    guid: string,
+    name: string,
+    school-class: string,
+    school-name: string,
+    selected: bool,
+}
+
+// Предмет в настройках дневника: hidden = true — не показывать в расписании дня
+
+export struct SubjectToggle {
+    subject: string,
+    hidden: bool,
+}
+// Недавняя оценка (из последних дней) — с датой выставления
+
+export struct RecentGrade {
+    subject: string,
+    mark: string,
+    mark-val: int,
+    date: string,
+}
+
+// Одна оценка в ленте предмета
+
+export struct GradeMark {
+    value: int,
+    date: string,   // короткая дата "06.04"
+}
+// Предмет со средним баллом и списком оценок за период
+
+export struct SubjectGrades {
+    subject: string,
+    average: string,     // отформатированное "4.64" или "—"
+    average-val: float,  // число — для цвета бейджа
+    marks: [GradeMark],
+}
+
+// Итоговая оценка за период (четверть / год)
+
+export struct FinalMark {
+    label: string,       // "1", "2", "3", "4", "Год"
+    average: string,     // "4.64" или "—"
+    average-val: float,
+}
+// Предмет с итоговыми оценками по всем периодам
+
+export struct SubjectFinals {
+    subject: string,
+    marks: [FinalMark],
+}
+
+// --- График успеваемости за год ---
+// Точка графика: относительные координаты 0..1 внутри области рисования.
+
+export struct ChartPoint {
+    px: float,     // 0..1 по горизонтали (позиция во времени)
+    py: float,     // 0..1 по вертикали (0 = верх/оценка 5, 1 = низ/оценка 2)
+    value: int,    // сама оценка (для цвета точки)
+}
+// Вертикальный пунктир — граница четверти.
+
+export struct ChartDivider {
+    px: float,     // 0..1 по горизонтали
+    label: string, // подпись четверти справа от линии ("2 чт")
+}
+// Полные данные графика по предмету.
+
+export struct SubjectChart {
+    subject: string,
+    points: [ChartPoint],
+    dividers: [ChartDivider],
+    has-data: bool,
+}
+// Ломаная линия графика в viewbox-координатах 0..1000 (готовая SVG-строка).
+
+// ============================================================
+//  Material 3 — цветовые роли (tonal surfaces + accent)
+// ============================================================
+

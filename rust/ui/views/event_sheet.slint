@@ -1,0 +1,214 @@
+import { Theme, Validate } from "../theme.slint";
+import { MaterialButton } from "../components/buttons.slint";
+
+export component EventSheet inherits Rectangle {
+    callback save(string, string, string);
+    callback close();
+
+    property <bool> valid: name-in.text != "" && start-in.text != ""
+        && !Validate.invalid(start-in.text) && !Validate.invalid(end-in.text);
+    // Клавиатура открыта, когда любое поле в фокусе
+    property <bool> kb-open: name-in.has-focus || start-in.has-focus || end-in.has-focus;
+
+    background: #000000.transparentize(0.5);
+
+    scrim-ta := TouchArea {
+        clicked => { root.close(); }
+    }
+
+    sheet-bg := Rectangle {
+        width: 100%;
+        height: sheet.preferred-height;
+        // Когда открыта клавиатура (поле в фокусе) — поднимаем шторку над клавиатурой
+        y: parent.height - self.height - (root.kb-open ? parent.height * 0.34 : 0px);
+        animate y { duration: 180ms; easing: ease-out; }
+        border-radius: 28px;
+        background: Theme.surface-container;
+
+        inner-ta := TouchArea {
+            clicked => { dismiss-fs.focus(); }
+        }
+        // Невидимый приёмник фокуса — чтобы убрать фокус с поля и спрятать клавиатуру
+        dismiss-fs := FocusScope { width: 0px; height: 0px; }
+
+        sheet := VerticalLayout {
+            padding: 20px;
+            spacing: 14px;
+
+            // «ручка» сверху
+            Rectangle {
+                height: 4px;
+                width: 40px;
+                x: (parent.width - self.width) / 2;
+                border-radius: 2px;
+                background: Theme.outline-variant;
+            }
+
+            // Заголовок + закрыть
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: "Новое событие";
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: Theme.on-surface;
+                    vertical-alignment: center;
+                }
+                Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: close-ta.pressed ? Theme.surface-container-highest : transparent;
+                    Path {
+                        width: 15px;
+                        height: 15px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M6 6 L18 18 M6 18 L18 6";
+                        fill: transparent;
+                        stroke: Theme.on-surface-variant;
+                        stroke-width: 2px;
+                    }
+                    close-ta := TouchArea {
+                        clicked => { root.close(); }
+                    }
+                }
+            }
+
+            // Название события
+            Text {
+                text: "Название";
+                font-size: 13px;
+                font-weight: 600;
+                color: Theme.on-surface-variant;
+            }
+            Rectangle {
+                height: 52px;
+                border-radius: Theme.radius-m;
+                background: Theme.surface-container-highest;
+                name-in := TextInput {
+                    x: 14px;
+                    width: parent.width - 28px;
+                    height: 100%;
+                    vertical-alignment: center;
+                    font-size: 16px;
+                    color: Theme.on-surface;
+                    single-line: true;
+                    accepted => { dismiss-fs.focus(); }
+                }
+                if name-in.text == "" : Text {
+                    x: 14px;
+                    width: parent.width - 28px;
+                    height: 100%;
+                    vertical-alignment: center;
+                    text: "например, тренировка";
+                    font-size: 16px;
+                    color: Theme.on-surface-variant.transparentize(0.3);
+                }
+            }
+
+            // Время начала и конца
+            Text {
+                text: "Время";
+                font-size: 13px;
+                font-weight: 600;
+                color: Theme.on-surface-variant;
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 52px;
+                    border-radius: Theme.radius-m;
+                    background: Theme.surface-container-highest;
+                    border-width: Validate.invalid(start-in.text) ? 2px : 0px;
+                    border-color: Theme.error;
+                    start-in := TextInput {
+                        x: 14px;
+                        width: parent.width - 28px;
+                        height: 100%;
+                        vertical-alignment: center;
+                        font-size: 16px;
+                        color: Theme.on-surface;
+                        single-line: true;
+                        accepted => { dismiss-fs.focus(); }
+                    }
+                    if start-in.text == "" : Text {
+                        x: 14px;
+                        width: parent.width - 28px;
+                        height: 100%;
+                        vertical-alignment: center;
+                        text: "08:05";
+                        font-size: 16px;
+                        color: Theme.on-surface-variant.transparentize(0.3);
+                    }
+                }
+                Text {
+                    text: "–";
+                    font-size: 22px;
+                    color: Theme.on-surface-variant;
+                    vertical-alignment: center;
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 52px;
+                    border-radius: Theme.radius-m;
+                    background: Theme.surface-container-highest;
+                    border-width: Validate.invalid(end-in.text) ? 2px : 0px;
+                    border-color: Theme.error;
+                    end-in := TextInput {
+                        x: 14px;
+                        width: parent.width - 28px;
+                        height: 100%;
+                        vertical-alignment: center;
+                        font-size: 16px;
+                        color: Theme.on-surface;
+                        single-line: true;
+                        accepted => { dismiss-fs.focus(); }
+                    }
+                    if end-in.text == "" : Text {
+                        x: 14px;
+                        width: parent.width - 28px;
+                        height: 100%;
+                        vertical-alignment: center;
+                        text: "08:45";
+                        font-size: 16px;
+                        color: Theme.on-surface-variant.transparentize(0.3);
+                    }
+                }
+            }
+
+            // Кнопка «С��хран����ть»
+            Rectangle {
+                height: 52px;
+                border-radius: 26px;
+                background: root.valid
+                    ? (save-ta.pressed ? Theme.primary.darker(0.1) : Theme.primary)
+                    : Theme.surface-container-highest;
+                Text {
+                    width: 100%;
+                    height: 100%;
+                    text: "Сохранить";
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: root.valid ? Theme.on-primary : Theme.on-surface-variant.transparentize(0.4);
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                save-ta := TouchArea {
+                    clicked => {
+                        if (root.valid) {
+                            root.save(name-in.text, start-in.text, end-in.text);
+                            root.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+

@@ -1,0 +1,277 @@
+import { Theme } from "../theme.slint";
+import { GradeMark } from "../types.slint";
+import { MarkColor, MarkToken, MarkMicroCard } from "../components/marks.slint";
+import { SimStepper, MaterialButton } from "../components/buttons.slint";
+
+export component SimulatorSheet inherits Rectangle {
+    in property <string> subject;
+    in property <float> real-avg;
+    in property <int> real-count;
+    in property <string> real-avg-str;
+    in property <[GradeMark]> source-marks;
+    callback close();
+
+    property <int> net2;
+    property <int> net3;
+    property <int> net4;
+    property <int> net5;
+    property <bool> easter-egg-open: false;
+
+    // Сколько реальных оценок каждого значения есть (считается при открытии)
+    property <int> exist2;
+    property <int> exist3;
+    property <int> exist4;
+    property <int> exist5;
+
+    property <int> change-count: root.net2 + root.net3 + root.net4 + root.net5;
+    property <float> change-sum: root.net2 * 2 + root.net3 * 3 + root.net4 * 4 + root.net5 * 5;
+    property <int> total-count: root.real-count + root.change-count;
+    property <float> real-sum: root.real-avg * root.real-count;
+    property <float> proj-avg: root.total-count <= 0 ? 0 : (root.real-sum + root.change-sum) / root.total-count;
+    property <int> proj-final: root.total-count <= 0 ? 0
+        : root.proj-avg.floor() + ((root.proj-avg - root.proj-avg.floor()) >= 0.5999 ? 1 : 0);
+    property <int> avg-hundredths: root.total-count <= 0 ? 0 : (root.proj-avg * 100 + 0.5).floor();
+    property <int> avg-int: (root.avg-hundredths / 100).floor();
+    property <int> avg-frac: root.avg-hundredths - root.avg-int * 100;
+    property <string> frac-str: root.avg-frac < 10 ? "0\{root.avg-frac}" : "\{root.avg-frac}";
+    property <string> proj-avg-str: root.total-count == 0 ? "—" : "\{root.avg-int}.\{root.frac-str}";
+
+    background: #000000.transparentize(0.5);
+
+    scrim-ta := TouchArea {
+        clicked => { root.close(); }
+    }
+
+    sheet-bg := Rectangle {
+        width: 100%;
+        height: sheet.preferred-height;
+        y: parent.height - self.height;
+        border-radius: 28px;
+        background: Theme.surface-container;
+
+        inner-ta := TouchArea { }
+        pmc := MarkColor { value: root.proj-final; }
+
+        sheet := VerticalLayout {
+            padding: 20px;
+            spacing: 16px;
+
+            Rectangle {
+                height: 4px;
+                width: 40px;
+                x: (parent.width - self.width) / 2;
+                border-radius: 2px;
+                background: Theme.outline-variant;
+            }
+
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.subject;
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: Theme.on-surface;
+                    overflow: elide;
+                    wrap: no-wrap;
+                    vertical-alignment: center;
+                }
+                Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: close-ta.pressed ? Theme.surface-container-highest : transparent;
+                    Path {
+                        width: 15px;
+                        height: 15px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M6 6 L18 18 M6 18 L18 6";
+                        fill: transparent;
+                        stroke: Theme.on-surface-variant;
+                        stroke-width: 2px;
+                    }
+                    close-ta := TouchArea {
+                        clicked => { root.close(); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 12px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 4px;
+                    Text { text: "Сейчас"; font-size: 12px; font-weight: 600; color: Theme.on-surface-variant; horizontal-alignment: center; }
+                    Text {
+                        text: root.real-count == 0 ? "—" : root.real-avg-str;
+                        font-size: 26px;
+                        font-weight: 800;
+                        color: Theme.on-surface;
+                        horizontal-alignment: center;
+                    }
+                    Text { text: "\{root.real-count} оц."; font-size: 11px; color: Theme.on-surface-variant; horizontal-alignment: center; }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 20px; height: 20px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: "M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z";
+                        fill: Theme.on-surface-variant;
+                    }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 4px;
+                    Text { text: "Прогноз"; font-size: 12px; font-weight: 600; color: Theme.on-surface-variant; horizontal-alignment: center; }
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 8px;
+                        Text {
+                            text: root.proj-avg-str;
+                            font-size: 26px;
+                            font-weight: 800;
+                            color: pmc.fg;
+                            vertical-alignment: center;
+                        }
+                        MarkToken {
+                            text: root.proj-final == 0 ? "—" : "\{root.proj-final}";
+                            value: root.proj-final;
+                            size: 38px;
+                            font: 19px;
+                        }
+                    }
+                    Text { text: root.change-count == 0 ? "\{root.total-count} оц." : (root.change-count > 0 ? "\{root.total-count} оц. (+\{root.change-count})" : "\{root.total-count} оц. (\{root.change-count})"); font-size: 11px; color: Theme.on-surface-variant; horizontal-alignment: center; }
+                }
+            }
+
+            // Уже стоящие оценки (для наглядности)
+            if root.source-marks.length > 0 : Text { text: "Уже стоящие оценки"; font-size: 13px; font-weight: 600; color: Theme.on-surface-variant; }
+            if root.source-marks.length > 0 : Rectangle {
+                clip: true;
+                height: exist-grid.min-height > 156px ? 156px : exist-grid.min-height;
+                Flickable {
+                    width: 100%;
+                    height: 100%;
+                    viewport-width: self.width;
+                    viewport-height: exist-grid.min-height;
+                    exist-grid := Rectangle {
+                        width: 100%;
+                        property <length> card-w: 46px;
+                        property <length> card-h: 56px;
+                        property <length> gap: 6px;
+                        property <int> raw-cols: ((self.width + self.gap) / (self.card-w + self.gap)).floor();
+                        property <int> cols: self.raw-cols < 1 ? 1 : self.raw-cols;
+                        property <int> rows: root.source-marks.length == 0 ? 0 : ((root.source-marks.length + self.cols - 1) / self.cols).floor();
+                        min-height: self.rows == 0 ? 0px : self.rows * (self.card-h + self.gap) - self.gap;
+                        for m[i] in root.source-marks : MarkMicroCard {
+                            property <int> cell-row: (i / exist-grid.cols).floor();
+                            x: (i - self.cell-row * exist-grid.cols) * (exist-grid.card-w + exist-grid.gap);
+                            y: self.cell-row * (exist-grid.card-h + exist-grid.gap);
+                            value: m.value;
+                            date: m.date;
+                            init => {
+                                root.exist2 += m.value == 2 ? 1 : 0;
+                                root.exist3 += m.value == 3 ? 1 : 0;
+                                root.exist4 += m.value == 4 ? 1 : 0;
+                                root.exist5 += m.value == 5 ? 1 : 0;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Смоделировать: + добавить оценку, − убрать оценку
+            Text { text: "Смоделировать (+ добавить / − убрать)"; font-size: 13px; font-weight: 600; color: Theme.on-surface-variant; }
+            HorizontalLayout {
+                spacing: 8px;
+                SimStepper { horizontal-stretch: 1; value: 5; net: root.net5; can-remove: root.net5 > -root.exist5; add => { root.net5 += 1; } remove => { root.net5 -= root.net5 > -root.exist5 ? 1 : 0; } }
+                SimStepper { horizontal-stretch: 1; value: 4; net: root.net4; can-remove: root.net4 > -root.exist4; add => { root.net4 += 1; } remove => { root.net4 -= root.net4 > -root.exist4 ? 1 : 0; } }
+                SimStepper { horizontal-stretch: 1; value: 3; net: root.net3; can-remove: root.net3 > -root.exist3; add => { root.net3 += 1; } remove => { root.net3 -= root.net3 > -root.exist3 ? 1 : 0; } }
+                SimStepper { horizontal-stretch: 1; value: 2; net: root.net2; can-remove: root.net2 > -root.exist2; add => { root.net2 += 1; if root.net2 == 67 { root.easter-egg-open = true; } } remove => { root.net2 -= root.net2 > -root.exist2 ? 1 : 0; } }
+            }
+
+            Rectangle {
+                height: 44px;
+                border-radius: 22px;
+                background: reset-ta.pressed ? Theme.surface-container-highest : Theme.surface-container-high;
+                Text {
+                    text: "Сбросить";
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: root.change-count != 0 ? Theme.primary : Theme.on-surface-variant;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                reset-ta := TouchArea {
+                    clicked => { root.net2 = 0; root.net3 = 0; root.net4 = 0; root.net5 = 0; root.easter-egg-open = false; }
+                }
+            }
+
+            Text {
+                text: "Это прикидка: как изменится средний балл, если добавить или убрать оценки. Реальные оценки не меняются.";
+                font-size: 11px;
+                color: Theme.on-surface-variant;
+                wrap: word-wrap;
+                horizontal-alignment: center;
+            }
+        }
+    }
+
+    // ??
+    if root.easter-egg-open : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #000000.transparentize(0.25);
+
+        TouchArea {
+            clicked => { root.easter-egg-open = false; }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            padding: 20px;
+
+            Rectangle {
+                border-radius: Theme.radius-xl;
+                background: Theme.surface-container;
+                border-width: 1px;
+                border-color: Theme.outline-variant;
+                clip: true;
+                max-width: 320px;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 16px;
+                    alignment: center;
+
+                    Image {
+                        source: @image-url("../../assets/image.png");
+                        width: 340px;
+                        height: 340px;
+                        image-fit: contain;
+                    }
+
+                    Rectangle {
+                        width: 100%;
+                        height: 44px;
+                        border-radius: 22px;
+                        background: Theme.primary;
+                        Text {
+                            text: "Че?!?!";
+                            font-size: 15px;
+                            font-weight: 700;
+                            color: Theme.on-primary;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        TouchArea {
+                            clicked => { root.easter-egg-open = false; }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

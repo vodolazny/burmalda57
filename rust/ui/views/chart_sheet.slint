@@ -1,0 +1,171 @@
+import { Theme } from "../theme.slint";
+import { ChartPoint, ChartDivider } from "../types.slint";
+import { Md3LoadingIndicator } from "../components/loading.slint";
+import { MarkColor } from "../components/marks.slint";
+
+export component ChartSheet inherits Rectangle {
+    in property <string> subject;
+    in property <[ChartPoint]> points;
+    in property <[ChartDivider]> dividers;
+    in property <string> line-path;   // ломаная в координатах viewbox 0..1000
+    in property <bool> has-data;
+    in property <bool> loading;
+    callback close();
+
+    background: #000000.transparentize(0.5);
+    scrim-ta := TouchArea { clicked => { root.close(); } }
+
+    sheet-bg := Rectangle {
+        width: 100%;
+        height: 360px;
+        y: parent.height - self.height;
+        border-radius: 28px;
+        background: Theme.surface-container;
+        inner-ta := TouchArea { }
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 16px;
+
+            // Ручка + заголовок
+            Rectangle {
+                height: 4px; width: 40px;
+                x: (parent.width - self.width) / 2;
+                border-radius: 2px;
+                background: Theme.outline-variant;
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.subject;
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: Theme.on-surface;
+                    overflow: elide;
+                    wrap: no-wrap;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "График за год";
+                    font-size: 12px;
+                    color: Theme.on-surface-variant;
+                    vertical-alignment: center;
+                }
+            }
+
+            // --- Область графика ---
+            plot := Rectangle {
+                vertical-stretch: 1;
+                border-radius: Theme.radius-l;
+                background: Theme.surface-container-high;
+                clip: true;
+
+                // Внутренние отступы области рисования
+                property <length> pad-l: 30px;   // под подписи оценок
+                property <length> pad-r: 14px;
+                property <length> pad-t: 14px;
+                property <length> pad-b: 14px;
+                property <length> plot-w: self.width - self.pad-l - self.pad-r;
+                property <length> plot-h: self.height - self.pad-t - self.pad-b;
+                // Доля отступа сверху/снизу (в нормированных координатах),
+                // чтобы линия у оценок 5 и 2 не прижималась к краю и не обрезалась.
+                property <float> pad-frac: 0.12;
+
+                // Горизонтальные линии-уровни 2..5 + подписи слева
+                for lvl[i] in [5, 4, 3, 2] : Rectangle {
+                    // py: 5→0.0, 2→1.0  =>  (5 - lvl)/3
+                    property <float> yy: (5 - lvl) / 3.0;
+                    x: plot.pad-l;
+                    y: plot.pad-t + plot.plot-h * (plot.pad-frac + self.yy * (1 - 2 * plot.pad-frac));
+                    width: plot.plot-w;
+                    height: 1px;
+                    background: Theme.on-surface-variant.transparentize(0.9);
+                    Text {
+                        x: -22px;
+                        y: -8px;
+                        text: "\{lvl}";
+                        font-size: 11px;
+                        color: Theme.on-surface-variant;
+                    }
+                }
+
+                // Пунктирные границы четвертей + подписи
+                for d in root.dividers : Rectangle {
+                    x: plot.pad-l + plot.plot-w * d.px;
+                    y: plot.pad-t;
+                    width: 1px;
+                    height: plot.plot-h;
+                    background: transparent;
+                    // Пунктир: колонка коротких штрихов
+                    for k in 14 : Rectangle {
+                        x: 0;
+                        y: k * (parent.height / 14) + 2px;
+                        width: 1px;
+                        height: (parent.height / 14) - 4px;
+                        background: Theme.outline;
+                    }
+                    Text {
+                        x: 3px;
+                        y: parent.height - self.height - 2px;
+                        text: d.label;
+                        font-size: 9px;
+                        color: Theme.on-surface-variant.transparentize(0.2);
+                    }
+                }
+
+                // Линия графика: рисуем по сегментам между соседними точками
+                // в пиксельных координатах. viewbox совпадает по соотношению
+                // сторон с элементом (= его размер в px), поэтому Path не сжимает
+                // линию по ширине, как это делал квадратный viewbox 0..1000.
+                // pad-frac даёт вертикальный отступ, чтобы 5 и 2 не резались краем.
+                for p[i] in root.points : Path {
+                    x: plot.pad-l;
+                    y: plot.pad-t;
+                    width: plot.plot-w;
+                    height: plot.plot-h;
+                    viewbox-x: 0;
+                    viewbox-y: 0;
+                    viewbox-width: plot.plot-w / 1px;
+                    viewbox-height: plot.plot-h / 1px;
+                    property <float> x1: plot.plot-w / 1px * p.px;
+                    property <float> y1: plot.plot-h / 1px * (plot.pad-frac + p.py * (1 - 2 * plot.pad-frac));
+                    property <float> x2: i < root.points.length - 1 ? plot.plot-w / 1px * root.points[i + 1].px : x1;
+                    property <float> y2: i < root.points.length - 1 ? plot.plot-h / 1px * (plot.pad-frac + root.points[i + 1].py * (1 - 2 * plot.pad-frac)) : y1;
+                    commands: i < root.points.length - 1 ? "M \{x1} \{y1} L \{x2} \{y2}" : "";
+                    fill: transparent;
+                    stroke: Theme.primary;
+                    stroke-width: 2.5px;
+                }
+
+                // Точки-марке��ы оценок поверх линии
+                for p in root.points : Rectangle {
+                    mc := MarkColor { value: p.value; }
+                    width: 9px;
+                    height: 9px;
+                    border-radius: 4.5px;
+                    x: plot.pad-l + plot.plot-w * p.px - self.width / 2;
+                    y: plot.pad-t + plot.plot-h * (plot.pad-frac + p.py * (1 - 2 * plot.pad-frac)) - self.height / 2;
+                    background: mc.fg;
+                    border-width: 2px;
+                    border-color: Theme.surface-container-high;
+                }
+
+                if root.loading : Md3LoadingIndicator {
+                    width: 42px; height: 42px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+                if !root.loading && !root.has-data : Text {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    text: "Нет оценок для графика";
+                    font-size: 14px;
+                    color: Theme.on-surface-variant;
+                }
+            }
+        }
+    }
+}
+
+

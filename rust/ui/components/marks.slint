@@ -1,0 +1,117 @@
+import { Theme } from "../theme.slint";
+
+export component MarkColor {
+    in property <int> value;
+    out property <color> fg: value >= 5 ? Theme.mark-5
+                           : value == 4 ? Theme.mark-4
+                           : value == 3 ? Theme.mark-3
+                           : value >  0 ? Theme.mark-2
+                           :              Theme.on-surface-variant;
+}
+
+// M3 tonal-жетон оценки. Отдельная фигура — только для оценки.
+
+export component MarkToken inherits Rectangle {
+    in property <string> text;
+    in property <int> value;
+    in property <length> size: 44px;
+    in property <length> font: 20px;
+
+    property <color> fg: mc.fg;
+    mc := MarkColor { value: root.value; }
+
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 4;
+    background: root.fg.transparentize(0.88);
+    border-width: 1px;
+    border-color: root.fg.transparentize(0.7);
+
+    Text {
+        width: 100%; height: 100%;
+        text: root.text;
+        font-size: root.font;
+        font-weight: 700;
+        color: root.fg;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// Крупная карточка недавней оценки (прямоугольная, скруглённая, M3 filled card)
+
+export component MarkMicroCard inherits Rectangle {
+    in property <int> value;
+    in property <string> date;
+
+    width: 46px;
+    height: 56px;
+    border-radius: Theme.radius-s;
+    background: Theme.surface-container-high;
+
+    mc := MarkColor { value: root.value; }
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 2px;
+        alignment: center;
+        Text {
+            text: root.date;
+            font-size: 10px;
+            color: Theme.on-surface-variant;
+            horizontal-alignment: center;
+            overflow: elide;
+            wrap: no-wrap;
+        }
+        Text {
+            text: "\{root.value}";
+            font-size: 21px;
+            font-weight: 800;
+            color: mc.fg;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+// Карточка предмета: имя + бейдж среднего + лента оценок
+
+export component FinalCell inherits VerticalLayout {
+    in property <string> label;
+    in property <string> average;
+    in property <float> average-val;
+
+    property <int> avg-bucket: root.average-val >= 4.59 ? 5
+                             : root.average-val >= 3.59 ? 4
+                             : root.average-val >= 2.59 ? 3
+                             : root.average-val >  0.0 ? 2
+                             : 0;
+    spacing: 3px;
+
+    Text {
+        text: root.label;
+        font-size: 10px;
+        font-weight: 600;
+        color: Theme.on-surface-variant;
+        horizontal-alignment: center;
+    }
+    mc := MarkColor { value: root.avg-bucket; }
+    Rectangle {
+        height: 34px;
+        border-radius: 10px;
+        background: mc.fg.transparentize(0.86);
+        border-width: 1px;
+        border-color: mc.fg.transparentize(0.7);
+        Text {
+            width: 100%; height: 100%;
+            text: root.average;
+            font-size: 14px;
+            font-weight: 800;
+            color: mc.fg;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// Карточка предмета с итоговыми оценками (четверти + год)
+
