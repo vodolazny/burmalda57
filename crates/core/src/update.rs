@@ -7,13 +7,13 @@ use crate::api::ApiRequest;
 // указывает на последний android-vX.Y.Z. GitHub сам пропускает черновики и
 // пре-релизы.
 const ANDROID_LATEST_URL: &str =
-    "https://api.github.com/repos/vodolazny/burmalda57test/releases/latest";
+    "https://api.github.com/repos/vodolazny/burmalda57/releases/latest";
 
 // iOS: один плавающий релиз ios-latest, запрашивается напрямую по тегу.
 // Версия берётся из названия релиза («iOS latest build 1.0.1 (unsigned)»)
 // или, если её там нет, из описания («Версия: 1.0.1») — см. ios.yml.
 const IOS_LATEST_URL: &str =
-    "https://api.github.com/repos/vodolazny/burmalda57test/releases/tags/ios-latest";
+    "https://api.github.com/repos/vodolazny/burmalda57/releases/tags/ios-latest";
 
 #[derive(Deserialize)]
 struct GhRelease {
