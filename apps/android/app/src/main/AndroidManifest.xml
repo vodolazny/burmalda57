@@ -6,7 +6,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="Бурмалда57"
+        android:label="${appLabel}"
         android:hasCode="true"
         android:theme="@style/Theme.AppCompat.NoActionBar"
         android:icon="@mipmap/ic_launcher"

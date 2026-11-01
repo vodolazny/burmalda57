@@ -105,6 +105,14 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 Готовый APK появится в `app/build/outputs/apk/debug/` или `app/build/outputs/apk/release/`.
 
+Debug устанавливается отдельно от релиза: пакет `ru.burmalda.journal.debug`,
+название «Бурмалда57 Debug». Релизный пакет остаётся `ru.burmalda.journal`.
+Это позволяет поставить debug рядом с релизом без конфликта подписей и без
+удаления данных релизного приложения. Данные между ними не переносятся.
+При обновлении уже установленного debug APK подпись всё равно должна совпадать:
+APK из разных запусков CI могут иметь разные debug-ключи. Точную причину
+отказа установки можно увидеть через `adb install -r app-debug.apk`.
+
 ### Требования для ручной сборки
 
 - **Rust** (stable) + Android-таргет:

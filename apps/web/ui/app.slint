@@ -857,7 +857,6 @@ component LessonDetail inherits Rectangle {
     background: transparent;
 
     property <string> note-draft: root.lesson.note;
-    property <bool> note-saved: false;
     property <bool> done: root.lesson.hw-done;
     property <bool> has-hw: root.lesson.homework != "";
     property <bool> has-topic: root.lesson.topic != "";
@@ -867,7 +866,6 @@ component LessonDetail inherits Rectangle {
 
     changed lesson => {
         self.done = root.lesson.hw-done;
-        root.note-saved = root.note-saved && root.note-draft == root.lesson.note;
         root.note-draft = root.lesson.note;
     }
 
@@ -1000,15 +998,9 @@ component LessonDetail inherits Rectangle {
                             text <=> root.note-draft;
                             single-line: false; wrap: word-wrap;
                             font-size: 14px; color: Theme.on-surface;
-                            edited => { root.note-saved = false; }
+                            edited => { root.save-note(root.lesson.note-key, self.text); }
                         }
                     }
-                    Rectangle {
-                        height: 40px; border-radius: 20px; background: Theme.primary;
-                        Text { text: root.note-saved ? "Сохранено" : "Сохранить заметку"; color: Theme.on-primary; horizontal-alignment: center; vertical-alignment: center; width: 100%; height: 100%; }
-                        TouchArea { clicked => { root.save-note(root.lesson.note-key, root.note-draft); root.note-saved = true; } }
-                    }
-                    Text { text: "Хранится только в этом браузере. Очистите текст и сохраните, чтобы удалить."; font-size: 12px; color: Theme.on-surface-variant; wrap: word-wrap; }
                 }
 
                 if !root.has-anything : Text {

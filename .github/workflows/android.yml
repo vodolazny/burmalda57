@@ -146,10 +146,18 @@ jobs:
         working-directory: apps/android
         run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
-      - name: Проверить подпись
-        if: steps.variant.outputs.value == 'release'
+      - name: Проверить пакет APK и подпись
+        env:
+          VARIANT: ${{ steps.variant.outputs.value }}
         run: |
-          APK=apps/android/app/build/outputs/apk/release/app-release.apk
+          set -euo pipefail
+          APK="apps/android/app/build/outputs/apk/$VARIANT/app-$VARIANT.apk"
+          EXPECTED_PACKAGE=ru.burmalda.journal
+          if [[ "$VARIANT" == debug ]]; then
+            EXPECTED_PACKAGE="$EXPECTED_PACKAGE.debug"
+          fi
+          BADGING=$("$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK")
+          printf '%s\n' "$BADGING" | grep -F "package: name='$EXPECTED_PACKAGE'"
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs "$APK"
 
       - name: Артефакт APK

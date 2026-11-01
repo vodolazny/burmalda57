@@ -179,7 +179,9 @@ fn wire_callbacks(ui: &AppWindow, app: &Arc<WebApp>) {
     let a = app.clone();
     ui.on_save_note(move |key, text| {
         a.core.lock().unwrap().save_note(key.as_str(), text.as_str());
-        ui_bridge::apply_note(key.to_string(), text.trim().to_string());
+        // Keep the live editor text intact, including a just-typed space or newline.
+        // Core normalizes the persisted value separately.
+        ui_bridge::apply_note(key.to_string(), text.to_string());
     });
     let a = app.clone();
     ui.on_toggle_subject_hidden(move |subject, hidden| {
