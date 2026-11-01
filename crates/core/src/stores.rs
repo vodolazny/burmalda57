@@ -2,7 +2,6 @@
 // предметов. Форматы JSON совпадают с прежними версиями приложений.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +17,6 @@ use crate::ports::SecureStore;
 // ============================================================
 pub struct EventsStore {
     map: HashMap<String, Vec<StoredEvent>>,
-    seq: u64,
 }
 
 impl EventsStore {
@@ -27,7 +25,7 @@ impl EventsStore {
             .load(path, FILE_EVENTS, CONTEXT_EVENTS)
             .and_then(|json| serde_json::from_str::<HashMap<String, Vec<StoredEvent>>>(&json).ok())
             .unwrap_or_default();
-        Self { map, seq: 0 }
+        Self { map }
     }
 
     pub fn for_date(&self, date: &str) -> Vec<StoredEvent> {
@@ -43,12 +41,9 @@ impl EventsStore {
         start: &str,
         end: &str,
     ) {
-        let ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-        self.seq = self.seq.wrapping_add(1);
-        let id = format!("{}-{}", ms, self.seq);
+        // Event IDs are opaque. Browser entropy also works on wasm, where
+        // std::time::SystemTime::now() is unsupported and panics.
+        let id = format!("{:032x}", rand::random::<u128>());
         self.map.entry(date.to_string()).or_default().push(StoredEvent {
             id,
             name: name.trim().to_string(),
@@ -375,6 +370,25 @@ mod tests {
         assert_eq!(e.name, "Тренировка");
         assert_eq!(e.start, "08:05");
         assert_eq!(e.end, "23:59");
+    }
+
+    #[test]
+    fn event_ids_remain_distinct_after_reload_and_old_ids_can_be_deleted() {
+        let store = MemStore::default();
+        // Preserve compatibility with IDs saved by earlier application versions.
+        store.save("p", FILE_EVENTS, CONTEXT_EVENTS,
+            r#"{"2026-01-01":[{"id":"1700000000000-1","name":"Старое событие","start":"08:00","end":""}]}"#).unwrap();
+        let mut events = EventsStore::load(&store, "p");
+        events.add(&store, "p", "2026-01-01", "Первое", "09:00", "");
+        let mut events = EventsStore::load(&store, "p");
+        events.add(&store, "p", "2026-01-01", "Второе", "09:00", "");
+        let items = events.for_date("2026-01-01");
+        let ids: HashSet<_> = items.iter().map(|e| &e.id).collect();
+        assert_eq!(ids.len(), 3);
+        events.delete(&store, "p", "2026-01-01", "1700000000000-1");
+        let remaining = EventsStore::load(&store, "p").for_date("2026-01-01");
+        assert_eq!(remaining.len(), 2);
+        assert!(remaining.iter().all(|e| e.id != "1700000000000-1"));
     }
 
     #[test]

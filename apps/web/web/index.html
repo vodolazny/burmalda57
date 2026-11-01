@@ -18,7 +18,8 @@
         }
         canvas {
             width: 100vw !important;
-            height: 100vh !important;
+            height: calc(var(--app-height, 100dvh) - env(safe-area-inset-bottom, 0px)) !important;
+            display: block;
             outline: none;
             touch-action: none;
         }
@@ -38,6 +39,20 @@
             box-sizing: border-box;
         }
     </style>
+    <script>
+        // 100vh can extend below mobile browser controls. ResizeObserver in
+        // winit follows the canvas CSS size, so keep it inside the visible area.
+        (function () {
+            var viewport = window.visualViewport;
+            function resizeCanvas() {
+                var height = viewport ? viewport.height : window.innerHeight;
+                document.documentElement.style.setProperty('--app-height', height + 'px');
+            }
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            if (viewport) viewport.addEventListener('resize', resizeCanvas);
+        })();
+    </script>
     <script>
         // Диагностика: показываем понятную причину, если приложение не грузится.
         (function () {

@@ -587,6 +587,7 @@ component LessonCard inherits Rectangle {
     in property <string> event-id;
     in property <bool>   hw-done;
     in property <string> hw-key;
+    in property <string> note;
     callback delete-requested();
     callback toggle-homework(string, bool);
     // Десктоп: тап выбирает урок (детали — в правой панели), а не раскрывает карточку
@@ -726,6 +727,18 @@ component LessonCard inherits Rectangle {
                     }
                 }
 
+                if root.note != "" && !root.is-event : VerticalLayout {
+                    alignment: center;
+                    Path {
+                        width: 16px; height: 16px;
+                        viewbox-width: 24; viewbox-height: 24;
+                        commands: "M4 20 h4 L19 9 a2 2 0 0 0 -3 -3 L5 17 z M15 6 l3 3";
+                        fill: transparent;
+                        stroke: Theme.primary;
+                        stroke-width: 1.8px;
+                    }
+                }
+
                 // Trailing: оценка; если её нет, а есть пропуск — ставим пропуск
                 if root.mark-value > 0 : VerticalLayout {
                     alignment: center;
@@ -857,6 +870,8 @@ component LessonDetail inherits Rectangle {
     background: transparent;
 
     property <string> note-draft: root.lesson.note;
+    property <string> displayed-note-key;
+    property <bool> note-saved: false;
     property <bool> done: root.lesson.hw-done;
     property <bool> has-hw: root.lesson.homework != "";
     property <bool> has-topic: root.lesson.topic != "";
@@ -866,6 +881,10 @@ component LessonDetail inherits Rectangle {
 
     changed lesson => {
         self.done = root.lesson.hw-done;
+        if (root.displayed-note-key != root.lesson.note-key) {
+            root.note-saved = false;
+        }
+        root.displayed-note-key = root.lesson.note-key;
         root.note-draft = root.lesson.note;
     }
 
@@ -988,7 +1007,13 @@ component LessonDetail inherits Rectangle {
 
                 if !root.lesson.is-event : VerticalLayout {
                     spacing: 8px;
-                    Text { text: "Заметка к уроку"; font-size: 14px; font-weight: 600; color: Theme.on-surface; }
+                    HorizontalLayout {
+                        Text { text: "Заметка к уроку"; font-size: 14px; font-weight: 600; color: Theme.on-surface; horizontal-stretch: 1; }
+                        if root.note-saved : Text {
+                            text: "Сохранено"; font-size: 11px; color: Theme.primary;
+                            vertical-alignment: center;
+                        }
+                    }
                     Rectangle {
                         height: 112px; border-radius: 12px;
                         background: Theme.surface-container;
@@ -998,7 +1023,10 @@ component LessonDetail inherits Rectangle {
                             text <=> root.note-draft;
                             single-line: false; wrap: word-wrap;
                             font-size: 14px; color: Theme.on-surface;
-                            edited => { root.save-note(root.lesson.note-key, self.text); }
+                            edited => {
+                                root.save-note(root.lesson.note-key, self.text);
+                                root.note-saved = true;
+                            }
                         }
                     }
                 }
@@ -1922,6 +1950,7 @@ component DiaryView inherits Rectangle {
                                 event-id: l.event-id;
                                 hw-done: l.hw-done;
                                 hw-key: l.hw-key;
+                                note: l.note;
                                 selectable: root.wide;
                                 active: root.wide && i == root.selected-lesson;
                                 select => { root.selected-lesson = i; }
@@ -4643,11 +4672,14 @@ export component AppWindow inherits Window {
         demo-requested => { root.demo-requested(); }
     }
     if root.mobile && root.logged-in : VerticalLayout {
+        width: 100%; height: 100%;
         spacing: 0px;
         Rectangle {
+            min-height: 0px;
             vertical-stretch: 1;
             if root.tab == 0 : MobileDiary {
                 width: 100%; height: 100%;
+                viewport-resizes-for-keyboard: true;
                 lessons: root.lessons; recent-grades: root.recent-grades;
                 current-date: root.current-date; cur-year: root.cur-year; cur-month: root.cur-month; cur-day: root.cur-day;
                 loading: root.loading; net-error: root.net-error; net-stale: root.net-stale;
@@ -4678,7 +4710,8 @@ export component AppWindow inherits Window {
             }
         }
         Rectangle {
-            height: 72px; background: Theme.nav-bg;
+            min-height: 72px; max-height: 72px;
+            background: Theme.nav-bg;
             HorizontalLayout {
                 spacing: 0px;
                 MobileNavItem { icon-id: 0; label: "Дневник"; selected: root.tab == 0; clicked => { root.tab = 0; } }

@@ -7,6 +7,7 @@ import { EventSheet } from "event_sheet.slint";
 import { RuCalendar } from "calendar.slint";
 
 export component DiaryView inherits Rectangle {
+    in property <bool> viewport-resizes-for-keyboard: false;
     in property <[RecentGrade]> recent-grades;
     in property <string> current-date;
     in property <[Lesson]> lessons;
@@ -36,7 +37,7 @@ export component DiaryView inherits Rectangle {
     // Идёт редактирование заметки (показана клавиатура)
     property <bool> note-editing: false;
     // Примерная высота клавиатуры (около 42% экрана)
-    property <length> keyboard-height: max(260px, root.height * 0.42);
+    property <length> keyboard-height: root.viewport-resizes-for-keyboard ? 0px : max(260px, root.height * 0.42);
     // Запас снизу списка на время редактирования
     property <length> keyboard-reserve: root.keyboard-height + 48px;
     // Куда прокрутить: положение и высота активного поля заметки
@@ -451,6 +452,7 @@ export component DiaryView inherits Rectangle {
     if root.event-open : EventSheet {
         width: 100%;
         height: 100%;
+        viewport-resizes-for-keyboard: root.viewport-resizes-for-keyboard;
         save(n, s, e) => { root.add-event(n, s, e); }
         close => { root.event-open = false; }
     }

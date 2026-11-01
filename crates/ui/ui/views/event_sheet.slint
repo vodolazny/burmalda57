@@ -2,6 +2,7 @@ import { Theme, Validate } from "../theme.slint";
 import { MaterialButton } from "../components/buttons.slint";
 
 export component EventSheet inherits Rectangle {
+    in property <bool> viewport-resizes-for-keyboard: false;
     callback save(string, string, string);
     callback close();
 
@@ -20,7 +21,7 @@ export component EventSheet inherits Rectangle {
         width: 100%;
         height: sheet.preferred-height;
         // Когда открыта клавиатура (поле в фокусе) — поднимаем шторку над клавиатурой
-        y: parent.height - self.height - (root.kb-open ? parent.height * 0.34 : 0px);
+        y: parent.height - self.height - (root.kb-open && !root.viewport-resizes-for-keyboard ? parent.height * 0.34 : 0px);
         animate y { duration: 180ms; easing: ease-out; }
         border-radius: 28px;
         background: Theme.surface-container;
