@@ -3,14 +3,14 @@
 
 use burmalda57_core::model::{
     ChartView, ChildItemView, DateView, DiaryView, LessonView, RecentGradeView, SessionView,
-    SubjectFinalsView, SubjectGradesView,
+    SubjectFinalsView, SubjectGradesView, SubjectToggleView,
 };
 use burmalda57_core::{DiaryUpdate, FinalsUpdate, MarksUpdate, UserSession};
-use slint::{ModelRc, VecModel};
+use slint::{Model, ModelRc, VecModel};
 
 use crate::{
-    AppWindow, ChartDivider, ChartPoint, ChildItem, FinalMark, GradeMark, Lesson, RecentGrade,
-    SubjectFinals, SubjectGrades, APP_WEAK,
+    AppWindow, ChartDivider, ChartPoint, ChildItem, FinalMark, DesktopGradeMark, Lesson, RecentGrade,
+    SubjectFinals, DesktopSubjectGrades, SubjectToggle, APP_WEAK,
 };
 
 fn post<F>(f: F)
@@ -48,25 +48,28 @@ fn lesson_model(lessons: Vec<LessonView>) -> ModelRc<Lesson> {
             event_id: l.event_id.into(),
             hw_done: l.hw_done,
             hw_key: l.hw_key.into(),
+            hw_hint: l.hw_hint.into(),
+            note: l.note.into(),
+            note_key: l.note_key.into(),
         })
         .collect();
     ModelRc::new(VecModel::from(model))
 }
 
-fn subjects_model(subjects: Vec<SubjectGradesView>) -> ModelRc<SubjectGrades> {
-    let model: Vec<SubjectGrades> = subjects
+fn subjects_model(subjects: Vec<SubjectGradesView>) -> ModelRc<DesktopSubjectGrades> {
+    let model: Vec<DesktopSubjectGrades> = subjects
         .into_iter()
         .map(|s| {
-            let marks: Vec<GradeMark> = s
+            let marks: Vec<DesktopGradeMark> = s
                 .marks
                 .into_iter()
-                .map(|m| GradeMark {
+                .map(|m| DesktopGradeMark {
                     value: m.value,
                     date: m.date.into(),
                     work: m.work.into(),
                 })
                 .collect();
-            SubjectGrades {
+            DesktopSubjectGrades {
                 subject: s.subject.into(),
                 average: s.average_text.into(),
                 average_val: s.average as f32,
@@ -184,13 +187,13 @@ pub(crate) fn apply_login_error(msg: &str) {
 }
 
 pub(crate) fn apply_diary(update: DiaryUpdate) {
-    // В web-UI нет ни баннера «данные от», ни вкладки предметов.
     let DiaryUpdate {
         date,
         view,
         loading,
         error,
-        ..
+        stale,
+        toggles,
     } = update;
     post(move |ui| {
         if let Some(d) = date {
@@ -205,6 +208,8 @@ pub(crate) fn apply_diary(update: DiaryUpdate) {
         if let Some(e) = error {
             ui.set_net_error(e.into());
         }
+        if let Some(stale) = stale { ui.set_net_stale(stale.into()); }
+        if let Some(toggles) = toggles { set_subject_filter(ui, toggles); }
     });
 }
 
@@ -240,6 +245,11 @@ pub(crate) fn apply_marks(update: MarksUpdate) {
             ui.set_grade_selected(selected);
         }
         if let Some(subjects) = subjects {
+            let mobile = subjects.iter().map(|s| crate::MobileSubjectGrades {
+                subject: s.subject.clone().into(), average: s.average_text.clone().into(), average_val: s.average as f32,
+                marks: ModelRc::new(VecModel::from(s.marks.iter().map(|m| crate::MobileGradeMark { value: m.value, date: m.date.clone().into() }).collect::<Vec<_>>())),
+            }).collect::<Vec<_>>();
+            ui.set_mobile_grade_subjects(ModelRc::new(VecModel::from(mobile)));
             ui.set_grade_subjects(subjects_model(subjects));
         }
         if let Some(on) = loading {
@@ -321,9 +331,34 @@ pub(crate) fn reset_logged_out() {
         ui.set_children_list(ModelRc::new(VecModel::<ChildItem>::default()));
         ui.set_lessons(ModelRc::new(VecModel::<Lesson>::default()));
         ui.set_recent_grades(ModelRc::new(VecModel::<RecentGrade>::default()));
-        ui.set_grade_subjects(ModelRc::new(VecModel::<SubjectGrades>::default()));
+        ui.set_grade_subjects(ModelRc::new(VecModel::<DesktopSubjectGrades>::default()));
         ui.set_grade_finals(ModelRc::new(VecModel::<SubjectFinals>::default()));
         ui.set_grade_periods(ModelRc::new(VecModel::<slint::SharedString>::default()));
         ui.set_has_avatar(false);
+        ui.set_mobile_grade_subjects(ModelRc::default());
+        ui.set_subject_toggles(ModelRc::default());
+        ui.set_subjects_open(false);
+    });
+}
+
+fn set_subject_filter(ui: &AppWindow, toggles: Vec<SubjectToggleView>) {
+    let model: Vec<SubjectToggle> = toggles.into_iter().map(|t| SubjectToggle { subject: t.subject.into(), hidden: t.hidden }).collect();
+    ui.set_subject_toggles(ModelRc::new(VecModel::from(model)));
+}
+pub(crate) fn apply_subject_filter(toggles: Vec<SubjectToggleView>) {
+    post(move |ui| set_subject_filter(ui, toggles));
+}
+
+pub(crate) fn apply_note(key: String, text: String) {
+    post(move |ui| {
+        let lessons = ui.get_lessons();
+        for i in 0..lessons.row_count() {
+            if let Some(mut lesson) = lessons.row_data(i) {
+                if lesson.note_key.as_str() == key {
+                    lesson.note = text.clone().into();
+                    lessons.set_row_data(i, lesson);
+                }
+            }
+        }
     });
 }

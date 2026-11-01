@@ -470,11 +470,14 @@ impl Core {
     /// Перерисовать текущий день из кеша (после событий/фильтра предметов).
     pub fn reapply_current_day(&mut self) -> Option<DiaryUpdate> {
         let date = self.current_date.clone().unwrap_or_else(diary::today);
-        let lessons = self
-            .diary_cache
-            .get_raw(&date)
-            .map(|raw| diary::parse(&raw))
-            .unwrap_or_default();
+        let lessons = if self.demo {
+            diary::demo_lessons(&date)
+        } else {
+            self.diary_cache
+                .get_raw(&date)
+                .map(|raw| diary::parse(&raw))
+                .unwrap_or_default()
+        };
         Some(self.build_diary_update(&date, lessons))
     }
 
@@ -1438,6 +1441,36 @@ mod tests {
         core.adopt_session(demo_session(), false).unwrap();
         core.set_current_date("2026-02-02".into());
         core
+    }
+
+    #[test]
+    fn demo_subject_filter_and_notes_survive_reapply_and_reload() {
+        let store = MemStore::default();
+        let mut core = core(&store);
+        core.enter_demo();
+        core.set_current_date("2026-02-02".into());
+        let initial = core.refresh_diary(0).unwrap();
+        let DiaryAction::Render(initial) = initial else { panic!("demo must render without network") };
+        let lessons = initial.view.unwrap().lessons;
+        assert!(!lessons.is_empty());
+        let subject = lessons[0].subject.clone();
+        let key = lessons[0].note_key.clone();
+        core.save_note(&key, "Не забыть тетрадь");
+        let hidden = core.set_subject_hidden(&subject, true);
+        assert!(hidden.toggles.iter().any(|t| t.subject == subject && t.hidden));
+        let filtered = hidden.diary.unwrap().view.unwrap().lessons;
+        assert!(filtered.iter().all(|l| l.subject != subject));
+        assert_eq!(filtered.len(), lessons.iter().filter(|l| l.subject != subject).count());
+        let mut restored = Core::new("/data", Box::new(store.clone()), CacheFormat::Stamps);
+        restored.enter_demo();
+        restored.set_current_date("2026-02-02".into());
+        assert!(restored.subject_toggles().iter().any(|t| t.subject == subject && t.hidden));
+        let shown = restored.set_subject_hidden(&subject, false).diary.unwrap().view.unwrap().lessons;
+        assert_eq!(shown.len(), lessons.len());
+        assert_eq!(shown.iter().find(|l| l.note_key == key).unwrap().note, "Не забыть тетрадь");
+        restored.save_note(&key, "  ");
+        let cleared = restored.reapply_current_day().unwrap().view.unwrap();
+        assert_eq!(cleared.lessons.iter().find(|l| l.note_key == key).unwrap().note, "");
     }
 
     #[test]

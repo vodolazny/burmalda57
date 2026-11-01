@@ -12,5 +12,6 @@ pub(crate) fn apply_system_theme(ui: &AppWindow) {
 
     let theme = ui.global::<Theme>();
     theme.set_system_dark(dark);
+    ui.global::<crate::MobileTheme>().set_dark(dark);
 }
 

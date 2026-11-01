@@ -539,28 +539,12 @@ export component LessonCard inherits Rectangle {
                                 }
                             }
 
-                            // Плейсхолдер: векторный карандаш + текст.
-                            // Символ “✎” убран: в системном шрифте Android его нет и
-                            // вместо иконки рисовался пустой прямоугольник.
+                            // Плейсхолдер без повторения иконки из заголовка.
                             if note-in.text == "" && !note-in.has-focus : HorizontalLayout {
                                 x: 12px;
                                 width: parent.width - 24px;
                                 height: 100%;
-                                spacing: 6px;
                                 alignment: start;
-                                VerticalLayout {
-                                    alignment: center;
-                                    Path {
-                                        width: 14px;
-                                        height: 14px;
-                                        viewbox-width: 24;
-                                        viewbox-height: 24;
-                                        commands: "M4 20 h4 L19 9 a2 2 0 0 0 -3 -3 L5 17 z M15 6 l3 3";
-                                        fill: transparent;
-                                        stroke: Theme.on-surface-variant.transparentize(0.25);
-                                        stroke-width: 1.6px;
-                                    }
-                                }
                                 Text {
                                     letter-spacing: Theme.tracking;
                                     text: "Добавить заметку";

@@ -12,6 +12,7 @@ export component ProfileView inherits Rectangle {
     in property <string> sid;
     in property <image> avatar;
     in property <bool> has-avatar;
+    in property <bool> demo-only: false;
     in property <bool> is-parent: false;
     in property <string> parent-name: "";
     in property <[ChildItem]> children-list;
@@ -241,7 +242,7 @@ export component ProfileView inherits Rectangle {
             }
         }
 
-        MaterialButton {
+        if !root.demo-only : MaterialButton {
             height: 48px;
             text: "Выйти";
             filled: false;

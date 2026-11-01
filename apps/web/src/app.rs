@@ -54,6 +54,9 @@ pub(crate) async fn app_main() {
 
     let ui = AppWindow::new().expect("Не удалось создать окно");
     ui.set_demo_only(DEMO_ONLY);
+    ui.set_mobile_device(web_sys::window()
+        .and_then(|w| w.match_media("(pointer: coarse) and (max-device-width: 900px)").ok().flatten())
+        .map(|m| m.matches()).unwrap_or(false));
     *APP_WEAK.lock().unwrap() = Some(ui.as_weak());
 
     let core = Core::new(
@@ -61,6 +64,7 @@ pub(crate) async fn app_main() {
         Box::new(WebStore),
         CacheFormat::LegacyMap,
     );
+    ui_bridge::apply_subject_filter(core.subject_toggles());
     let app = Arc::new(WebApp {
         http: WebHttp,
         core: Mutex::new(core),
@@ -78,6 +82,7 @@ pub(crate) async fn app_main() {
     ui.global::<Validate>()
         .on_invalid(|s| !is_valid_time(s.as_str()));
 
+    ui.global::<crate::MobileValidate>().on_invalid(|s| !is_valid_time(s.as_str()));
     crate::theme::apply_system_theme(&ui);
 
     if DEMO_ONLY {
@@ -169,6 +174,18 @@ fn wire_callbacks(ui: &AppWindow, app: &Arc<WebApp>) {
     let a = app.clone();
     ui.on_toggle_homework(move |key, done| {
         a.core.lock().unwrap().toggle_homework(key.as_str(), done);
+    });
+
+    let a = app.clone();
+    ui.on_save_note(move |key, text| {
+        a.core.lock().unwrap().save_note(key.as_str(), text.as_str());
+        ui_bridge::apply_note(key.to_string(), text.trim().to_string());
+    });
+    let a = app.clone();
+    ui.on_toggle_subject_hidden(move |subject, hidden| {
+        let update = a.core.lock().unwrap().set_subject_hidden(subject.as_str(), hidden);
+        ui_bridge::apply_subject_filter(update.toggles);
+        if let Some(diary) = update.diary { ui_bridge::apply_diary(diary); }
     });
 
     let a = app.clone();

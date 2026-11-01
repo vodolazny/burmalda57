@@ -1,3 +1,14 @@
+// Reuse the Android UI on narrow/touch screens; browser transport stays in Rust.
+import { DiaryView as MobileDiary } from "../../../crates/ui/ui/views/diary.slint";
+import { GradesView as MobileGrades } from "../../../crates/ui/ui/views/grades.slint";
+import { ProfileView as MobileProfile } from "../../../crates/ui/ui/views/profile.slint";
+import { LoginScreen as MobileLogin } from "../../../crates/ui/ui/views/login.slint";
+import { NavItem as MobileNavItem } from "../../../crates/ui/ui/components/navigation.slint";
+import { SubjectsOverlay } from "../../../crates/ui/ui/views/subjects_overlay.slint";
+export { SubjectToggle, SubjectGrades as MobileSubjectGrades, GradeMark as MobileGradeMark } from "../../../crates/ui/ui/types.slint";
+import { SubjectToggle, SubjectGrades as MobileSubjectGrades } from "../../../crates/ui/ui/types.slint";
+export { Theme as MobileTheme, Validate as MobileValidate } from "../../../crates/ui/ui/theme.slint";
+
 // Проверка времени (реализация в Rust). invalid(s) == true — формат/диапазон неверный.
 // Пустая строка считается корректной. Если Rust не подключит колбэк, по умолчанию false (валидация отключена).
 export global Validate {
@@ -20,6 +31,9 @@ export struct Lesson {
     event-id: string,
     hw-done: bool,
     hw-key: string,
+    hw-hint: string,
+    note: string,
+    note-key: string,
 }
 
 export struct ChildItem {
@@ -38,17 +52,17 @@ export struct RecentGrade {
 }
 
 // Одна оценка в ленте предмета
-export struct GradeMark {
+export struct DesktopGradeMark {
     value: int,
     date: string,   // короткая дата "06.04"
     work: string,   // название/тип работы ("Контрольная работа") — может быть пустым
 }
 // Предмет со средним баллом и списком оценок за период
-export struct SubjectGrades {
+export struct DesktopSubjectGrades {
     subject: string,
     average: string,     // отформатированное "4.64" или "—"
     average-val: float,  // число — для цвета бейджа
-    marks: [GradeMark],
+    marks: [DesktopGradeMark],
     n5: int,             // количество пятёрок (для распределения и прогноза)
     n4: int,
     n3: int,
@@ -839,8 +853,11 @@ component LessonCard inherits Rectangle {
 component LessonDetail inherits Rectangle {
     in property <Lesson> lesson;
     callback toggle-homework(string, bool);
+    callback save-note(string, string);
     background: transparent;
 
+    property <string> note-draft: root.lesson.note;
+    property <bool> note-saved: false;
     property <bool> done: root.lesson.hw-done;
     property <bool> has-hw: root.lesson.homework != "";
     property <bool> has-topic: root.lesson.topic != "";
@@ -850,6 +867,8 @@ component LessonDetail inherits Rectangle {
 
     changed lesson => {
         self.done = root.lesson.hw-done;
+        root.note-saved = root.note-saved && root.note-draft == root.lesson.note;
+        root.note-draft = root.lesson.note;
     }
 
     Rectangle {
@@ -967,6 +986,29 @@ component LessonDetail inherits Rectangle {
                             Text { text: root.lesson.grade-type; font-size: 12px; font-weight: 700; color: Theme.on-secondary-container; vertical-alignment: center; }
                         }
                     }
+                }
+
+                if !root.lesson.is-event : VerticalLayout {
+                    spacing: 8px;
+                    Text { text: "Заметка к уроку"; font-size: 14px; font-weight: 600; color: Theme.on-surface; }
+                    Rectangle {
+                        height: 112px; border-radius: 12px;
+                        background: Theme.surface-container;
+                        border-width: 1px; border-color: Theme.outline-variant;
+                        TextInput {
+                            x: 12px; y: 12px; width: parent.width - 24px; height: parent.height - 24px;
+                            text <=> root.note-draft;
+                            single-line: false; wrap: word-wrap;
+                            font-size: 14px; color: Theme.on-surface;
+                            edited => { root.note-saved = false; }
+                        }
+                    }
+                    Rectangle {
+                        height: 40px; border-radius: 20px; background: Theme.primary;
+                        Text { text: root.note-saved ? "Сохранено" : "Сохранить заметку"; color: Theme.on-primary; horizontal-alignment: center; vertical-alignment: center; width: 100%; height: 100%; }
+                        TouchArea { clicked => { root.save-note(root.lesson.note-key, root.note-draft); root.note-saved = true; } }
+                    }
+                    Text { text: "Хранится только в этом браузере. Очистите текст и сохраните, чтобы удалить."; font-size: 12px; color: Theme.on-surface-variant; wrap: word-wrap; }
                 }
 
                 if !root.has-anything : Text {
@@ -1193,6 +1235,7 @@ component LoginScreen inherits Rectangle {
         height: 100%;
         viewbox-x: 0; viewbox-y: 0;
         viewbox-width: 1000; viewbox-height: 1000;
+        fit: fill;
         commands: "M 0 300 C 300 150, 650 420, 1000 280";
         fill: transparent;
         stroke: Theme.on-surface-variant.transparentize(0.72);
@@ -1205,6 +1248,7 @@ component LoginScreen inherits Rectangle {
         height: 100%;
         viewbox-x: 0; viewbox-y: 0;
         viewbox-width: 1000; viewbox-height: 1000;
+        fit: fill;
         commands: "M 0 720 C 350 850, 680 540, 1000 660";
         fill: transparent;
         stroke: Theme.on-surface-variant.transparentize(0.78);
@@ -1217,15 +1261,25 @@ component LoginScreen inherits Rectangle {
         height: 100%;
         viewbox-x: 0; viewbox-y: 0;
         viewbox-width: 1000; viewbox-height: 1000;
+        fit: fill;
         commands: "M 0 480 C 280 620, 720 320, 1000 460";
         fill: transparent;
         stroke: Theme.primary.transparentize(0.85);
         stroke-width: 1.2px;
     }
 
+    Rectangle {
+        width: min(root.width - 48px, 460px);
+        height: min(root.height - 32px, root.login-error != "" ? 540px : 440px);
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        border-radius: 28px;
+        background: Theme.surface-container-low;
+        border-width: 1px; border-color: Theme.outline-variant;
+        drop-shadow-blur: 32px; drop-shadow-color: Theme.shadow;
     VerticalLayout {
-        padding-left: 24px;
-        padding-right: 24px;
+        padding-left: 32px;
+        padding-right: 32px;
         padding-top: 24px;
         padding-bottom: 28px;
         spacing: 0px;
@@ -1363,6 +1417,7 @@ component LoginScreen inherits Rectangle {
                 clicked => { root.demo-requested(); }
             }
         }
+    }
     }
 }
 
@@ -1634,6 +1689,7 @@ component DiaryView inherits Rectangle {
     callback add-event(string, string, string);
     callback delete-event(string);
     callback toggle-homework(string, bool);
+    callback save-note(string, string);
     in-out property <bool> event-open: false;
     background: Theme.background;
 
@@ -1642,7 +1698,7 @@ component DiaryView inherits Rectangle {
 
     // Десктоп: выбираемый урок и правая панель деталей
     in-out property <int> selected-lesson: -1;
-    property <bool> wide: self.width >= 860px;
+    property <bool> wide: true;
     property <bool> has-selection: root.wide
         && root.selected-lesson >= 0
         && root.selected-lesson < root.lessons.length;
@@ -1956,6 +2012,7 @@ component DiaryView inherits Rectangle {
                 height: 100%;
                 lesson: root.lessons[root.selected-lesson];
                 toggle-homework(k, d) => { root.toggle-homework(k, d); }
+                save-note(k, t) => { root.save-note(k, t); }
             }
         }
         if root.wide && !root.has-selection : Rectangle {
@@ -2046,6 +2103,7 @@ component ProfileView inherits Rectangle {
     in property <string> parent-name: "";
     in property <[ChildItem]> children-list;
     in property <bool> demo-only: false;
+    callback open-subjects();
     callback logout();
     callback pick-avatar();
     callback open-url(string);
@@ -2255,6 +2313,12 @@ component ProfileView inherits Rectangle {
                         child-ta := TouchArea { clicked => { root.open-child-select(); } }
                     }
                 }
+            }
+
+            Rectangle {
+                height: 52px; border-radius: 16px; background: Theme.secondary-container;
+                Text { text: "Предметы в дневнике"; font-size: 14px; font-weight: 600; color: Theme.on-secondary-container; width: 100%; height: 100%; horizontal-alignment: center; vertical-alignment: center; }
+                TouchArea { clicked => { root.open-subjects(); } }
             }
 
             // ==========================================
@@ -3035,7 +3099,7 @@ component ChartPlot inherits Rectangle {
 component GradesView inherits Rectangle {
     in property <[string]> periods;
     in property <int> selected;
-    in property <[SubjectGrades]> subjects;
+    in property <[DesktopSubjectGrades]> subjects;
     in property <[SubjectFinals]> finals;
     in property <int> mode;          // 0 — текущая, 1 — годовая
     in property <bool> loading;
@@ -3061,8 +3125,8 @@ component GradesView inherits Rectangle {
     property <int> sel-n4: root.has-sel ? root.subjects[root.selected-subject].n4 : 0;
     property <int> sel-n3: root.has-sel ? root.subjects[root.selected-subject].n3 : 0;
     property <int> sel-n2: root.has-sel ? root.subjects[root.selected-subject].n2 : 0;
-    property <[GradeMark]> sel-marks: root.has-sel ? root.subjects[root.selected-subject].marks : no-marks;
-    property <[GradeMark]> no-marks;
+    property <[DesktopGradeMark]> sel-marks: root.has-sel ? root.subjects[root.selected-subject].marks : no-marks;
+    property <[DesktopGradeMark]> no-marks;
     property <int> dist-total: root.sel-n5 + root.sel-n4 + root.sel-n3 + root.sel-n2;
 
     // Прогноз четвертной оценки: тот же алгоритм, что в симуляторе
@@ -4127,6 +4191,13 @@ export component AppWindow inherits Window {
     preferred-height: 760px;
     background: Theme.background;
 
+    in property <bool> mobile-device: false;
+    property <bool> mobile: root.mobile-device || root.width < 760px;
+    in property <string> net-stale;
+    in property <[SubjectToggle]> subject-toggles;
+    in property <[MobileSubjectGrades]> mobile-grade-subjects;
+    in-out property <bool> subjects-open: false;
+    callback toggle-subject-hidden(string, bool);
     in property <[RecentGrade]> recent-grades;
     in property <bool> logged-in: false;
     // Демо-сборка: вход и выход отключены, профиль показывает пояснение.
@@ -4156,7 +4227,7 @@ export component AppWindow inherits Window {
     // Вкладка «Оценки»
     in property <[string]> grade-periods;
     in property <int> grade-selected;
-    in property <[SubjectGrades]> grade-subjects;
+    in property <[DesktopSubjectGrades]> grade-subjects;
     in property <[SubjectFinals]> grade-finals;
     in property <int> grade-mode;
     in property <bool> grades-loading;
@@ -4191,6 +4262,7 @@ export component AppWindow inherits Window {
     callback add-event(string, string, string);
     callback delete-event(string);
     callback toggle-homework(string, bool);
+    callback save-note(string, string);
     callback demo-requested();
     callback tab-changed(int);
     callback cal-open-changed(bool);
@@ -4213,7 +4285,7 @@ export component AppWindow inherits Window {
     changed event-open => { root.event-open-changed(root.event-open); }
     changed child-select-open => { root.child-select-open-changed(root.child-select-open); }
 
-    if !root.logged-in : LoginScreen {
+    if !root.logged-in && !root.mobile : LoginScreen {
         width: 100%;
         height: 100%;
         login-error: root.login-error;
@@ -4222,7 +4294,7 @@ export component AppWindow inherits Window {
         demo-requested => { root.demo-requested(); }
     }
 
-    if root.logged-in : HorizontalLayout {
+    if root.logged-in && !root.mobile : HorizontalLayout {
         spacing: 0px;
 
         // Левая навигация (M3 Navigation Rail / Drawer):
@@ -4526,6 +4598,7 @@ export component AppWindow inherits Window {
                 add-event(n, s, e) => { root.add-event(n, s, e); }
                 delete-event(id) => { root.delete-event(id); }
                 toggle-homework(k, d) => { root.toggle-homework(k, d); }
+                save-note(k, t) => { root.save-note(k, t); }
             }
             if root.tab == 1 : GradesView {
                 width: 100%; height: 100%;
@@ -4546,6 +4619,7 @@ export component AppWindow inherits Window {
                 open-chart(s) => { root.grade-open-chart(s); }
             }
             if root.tab == 2 : ProfileView {
+                open-subjects => { root.subjects-open = true; }
                 width: 100%; height: 100%;
                 full-name: root.full-name;
                 school-name: root.school-name;
@@ -4569,6 +4643,63 @@ export component AppWindow inherits Window {
         } // /правая колонка
     }
 
+
+    if root.mobile && !root.logged-in : MobileLogin {
+        width: 100%; height: 100%;
+        login-error: root.login-error; logging-in: root.logging-in;
+        login-requested => { root.login-requested(); }
+        demo-requested => { root.demo-requested(); }
+    }
+    if root.mobile && root.logged-in : VerticalLayout {
+        spacing: 0px;
+        Rectangle {
+            vertical-stretch: 1;
+            if root.tab == 0 : MobileDiary {
+                width: 100%; height: 100%;
+                lessons: root.lessons; recent-grades: root.recent-grades;
+                current-date: root.current-date; cur-year: root.cur-year; cur-month: root.cur-month; cur-day: root.cur-day;
+                loading: root.loading; net-error: root.net-error; net-stale: root.net-stale;
+                event-open <=> root.event-open;
+                prev-day => { root.prev-day(); } next-day => { root.next-day(); }
+                refresh => { root.refresh-day(); } open-calendar => { root.cal-open = true; }
+                pick-date(y,m,d) => { root.pick-date(y,m,d); }
+                add-event(n,s,e) => { root.add-event(n,s,e); } delete-event(id) => { root.delete-event(id); }
+                toggle-homework(k,d) => { root.toggle-homework(k,d); } save-note(k,t) => { root.save-note(k,t); }
+            }
+            if root.tab == 1 : MobileGrades {
+                width: 100%; height: 100%;
+                periods: root.grade-periods; selected: root.grade-selected; subjects: root.mobile-grade-subjects;
+                finals: root.grade-finals; mode: root.grade-mode; loading: root.grades-loading; error: root.grades-error;
+                chart-points: root.chart-points; chart-dividers: root.chart-dividers; chart-line-path: root.chart-line-path;
+                chart-has-data: root.chart-has-data; chart-loading: root.chart-loading;
+                select(i) => { root.grade-select(i); } select-mode(i) => { root.grade-mode-select(i); }
+                open-chart(s) => { root.grade-open-chart(s); }
+            }
+            if root.tab == 2 : MobileProfile {
+                demo-only: root.demo-only;
+                width: 100%; height: 100%;
+                full-name: root.full-name; school-name: root.school-name; school-class: root.school-class;
+                guid: root.guid; avatar: root.avatar; has-avatar: root.has-avatar;
+                is-parent: root.is-parent; parent-name: root.parent-name; children-list: root.children-list;
+                logout => { root.logout(); } pick-avatar => { root.pick-avatar(); } open-url(u) => { root.open-url(u); }
+                open-child-select => { root.open-child-select(); } open-subjects => { root.subjects-open = true; }
+            }
+        }
+        Rectangle {
+            height: 72px; background: Theme.nav-bg;
+            HorizontalLayout {
+                spacing: 0px;
+                MobileNavItem { icon-id: 0; label: "Дневник"; selected: root.tab == 0; clicked => { root.tab = 0; } }
+                MobileNavItem { icon-id: 1; label: "Оценки"; selected: root.tab == 1; clicked => { root.tab = 1; } }
+                MobileNavItem { icon-id: 2; label: "Профиль"; selected: root.tab == 2; clicked => { root.tab = 2; } }
+            }
+        }
+    }
+    if root.subjects-open : SubjectsOverlay {
+        width: 100%; height: 100%; items: root.subject-toggles;
+        toggle-subject-hidden(s,h) => { root.toggle-subject-hidden(s,h); }
+        close => { root.subjects-open = false; }
+    }
     // --- Оверлей русского календаря (поверх всего) ---
     if root.cal-open : RuCalendar {
         width: 100%;
@@ -4584,7 +4715,7 @@ export component AppWindow inherits Window {
     }
 
     // --- Поповер «Новое событие» — справа от кнопки «+» в rail'е ---
-    if root.event-open : EventSheet {
+    if root.event-open && !root.mobile : EventSheet {
         width: 100%;
         height: 100%;
         rail-expanded: root.rail-expanded;
