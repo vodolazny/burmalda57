@@ -1,7 +1,8 @@
 # 📚 Электронный дневник obr57 (burmalda57) — iOS
 
 Неофициальный клиент электронного дневника Орловской области ([obr57.ru](https://obr57.ru/gis)).
-Написан на **Rust + [Slint](https://slint.dev)** (рендер Skia / Metal на iOS).
+Написан на **Rust + [Slint 1.18.1](https://slint.dev)** (рендер Skia / Metal на iOS,
+с поддержкой полной частоты экрана на ProMotion).
 
 Это часть [монорепозитория burmalda57](../../README.md): бизнес-логика — в
 [`crates/core`](../../crates/core), общий мобильный UI — в
@@ -54,6 +55,11 @@
 ## 🛠️ Сборка вручную
 
 Нужны: **macOS**, **Xcode** (с Command Line Tools), **Rust**, `cmake` и `ninja`.
+
+При упаковке сохраняйте `CADisableMinimumFrameDurationOnPhone` и
+`UIApplicationSceneManifest` из `rust/ios/Info.plist`: первый разрешает ProMotion
+на iPhone, второй подключает окна через `SlintWindowSceneDelegate` (обязательно
+для запуска на iOS 27).
 
 ### 1. Подготовка
 

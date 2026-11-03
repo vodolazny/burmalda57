@@ -18,7 +18,7 @@ echo "==> 2. Генерация JS-обвязки (wasm-bindgen)..."
 wasm-bindgen \
     "$WORKSPACE_DIR/target/wasm32-unknown-unknown/release/burmalda57.wasm" \
     --out-dir "$SCRIPT_DIR/web/pkg" \
-    --target web
+    --target web --remove-name-section
 
 if command -v wasm-opt &> /dev/null; then
     echo "==> 3. Оптимизация размера WASM (wasm-opt -Oz)..."

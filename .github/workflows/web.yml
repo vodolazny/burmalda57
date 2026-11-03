@@ -61,7 +61,7 @@ jobs:
           wasm-bindgen \
             target/wasm32-unknown-unknown/release/burmalda57.wasm \
             --out-dir apps/web/web/pkg \
-            --target web
+            --target web --remove-name-section
 
       - name: Артефакт для GitHub Pages
         if: github.event_name != 'pull_request'

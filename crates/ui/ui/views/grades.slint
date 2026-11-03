@@ -73,8 +73,8 @@ export component GradesView inherits Rectangle {
                 Flickable {
                     width: 100%;
                     height: 100%;
-                    viewport-width: max(self.width, chips.preferred-width);
-                    viewport-height: self.height;
+                    content-width: max(self.width, chips.preferred-width);
+                    content-height: self.height;
                     chips := HorizontalLayout {
                         padding-left: 12px;
                         padding-right: 12px;
@@ -96,8 +96,8 @@ export component GradesView inherits Rectangle {
                 Flickable {
                     width: 100%;
                     height: 100%;
-                    viewport-width: self.width;
-                    viewport-height: col.preferred-height;
+                    content-width: self.width;
+                    content-height: col.preferred-height;
                     col := VerticalLayout {
                         padding: 12px;
                         padding-top: 4px;
@@ -160,8 +160,8 @@ export component GradesView inherits Rectangle {
             Flickable {
                 width: 100%;
                 height: 100%;
-                viewport-width: self.width;
-                viewport-height: fcol.preferred-height;
+                content-width: self.width;
+                content-height: fcol.preferred-height;
                 fcol := VerticalLayout {
                     padding: 12px;
                     padding-top: 4px;

@@ -231,8 +231,8 @@ export component DiaryView inherits Rectangle {
             Flickable {
                 x: 0; y: 0;
                 width: parent.width; height: 140px;
-                viewport-width: max(parent.width, root.recent-grades.length * 142px + 12px);
-                viewport-height: self.height;
+                content-width: max(parent.width, root.recent-grades.length * 142px + 12px);
+                content-height: self.height;
 
                 HorizontalLayout {
                     y: 12px; height: 116px;
@@ -261,13 +261,13 @@ export component DiaryView inherits Rectangle {
             flick := Flickable {
                 width: 100%;
                 height: 100%;
-                viewport-width: flick.width;
-                viewport-height: lessons-col.preferred-height;
+                content-width: flick.width;
+                content-height: lessons-col.preferred-height;
 
-                changed viewport-y => {
-                    if (self.viewport-y > 0px && !root.loading) {
-                        root.pull = self.viewport-y;
-                        if (self.viewport-y >= root.pull-trigger) {
+                changed content-y => {
+                    if (self.content-y > 0px && !root.loading) {
+                        root.pull = self.content-y;
+                        if (self.content-y >= root.pull-trigger) {
                             root.refresh();
                             root.pull = 0px;
                         }
@@ -340,9 +340,9 @@ export component DiaryView inherits Rectangle {
                 running: false;
                 triggered => {
                     self.running = false;
-                    flick.viewport-y = min(0px, max(
-                        -max(0px, flick.viewport-height - flick.height),
-                        flick.viewport-y - (
+                    flick.content-y = min(0px, max(
+                        -max(0px, flick.content-height - flick.height),
+                        flick.content-y - (
                             (root.note-y + root.note-h + 12px) > (flick.absolute-position.y + flick.height - root.keyboard-height)
                                 ? (root.note-y + root.note-h + 12px) - (flick.absolute-position.y + flick.height - root.keyboard-height)
                                 : (root.note-y < flick.absolute-position.y + 8px
@@ -354,8 +354,8 @@ export component DiaryView inherits Rectangle {
             }
 
             // Индикатор Pull-to-refresh 
-            if flick.viewport-y > 5px && !root.loading : Rectangle {
-                property <length> display-pull: min(flick.viewport-y, 70px);
+            if flick.content-y > 5px && !root.loading : Rectangle {
+                property <length> display-pull: min(flick.content-y, 70px);
                 y: self.display-pull - 45px;
                 height: 40px; width: 40px;
                 x: (parent.width - self.width) / 2;
@@ -363,13 +363,13 @@ export component DiaryView inherits Rectangle {
                 background: Theme.surface-container-high;
                 drop-shadow-blur: 6px;
                 drop-shadow-color: Theme.shadow;
-                opacity: min(flick.viewport-y / root.pull-trigger, 1.0);
+                opacity: min(flick.content-y / root.pull-trigger, 1.0);
                 
                 Text {
                     letter-spacing: Theme.tracking;
                     width: 100%;
                     height: 100%;
-                    text: flick.viewport-y >= root.pull-trigger ? "↑" : "��";
+                    text: flick.content-y >= root.pull-trigger ? "↑" : "��";
                     font-size: 18px;
                     color: Theme.primary;
                     horizontal-alignment: center;

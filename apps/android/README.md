@@ -56,7 +56,7 @@
 
 | Слой | Что используется |
 |------|------------------|
-| UI | [Slint 1.8](https://slint.dev) (нативный рендер `FemtoVG` / OpenGL ES поверх EGL через `glutin`) |
+| UI | [Slint 1.18.1](https://slint.dev) (нативный рендер `FemtoVG` / OpenGL ES поверх EGL через `glutin`) |
 | Логика/сеть/крипта | Rust (`cdylib`, собирается через `cargo-ndk`) |
 | Платформа | `android-activity` (NativeActivity) |
 | Фоновые задачи | `Android WorkManager` (GradesWorker на Kotlin) |

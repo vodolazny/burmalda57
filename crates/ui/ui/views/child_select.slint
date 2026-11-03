@@ -83,7 +83,7 @@ export component ChildSelectOverlay inherits Rectangle {
             Rectangle { height: 1px; background: Theme.outline-variant; }
 
             Flickable {
-                viewport-height: children-list.preferred-height;
+                content-height: children-list.preferred-height;
                 preferred-height: min(children-list.preferred-height, 300px);
                 max-height: 300px;
 

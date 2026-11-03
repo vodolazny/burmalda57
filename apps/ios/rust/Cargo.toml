@@ -39,7 +39,7 @@ burmalda57-ui = { path = "../../../crates/ui" }
 
 # ---------- iOS: Slint на winit + Skia (Metal). FemtoVG/glutin на iOS не работают ----------
 [target.'cfg(target_os = "ios")'.dependencies]
-slint = { version = "=1.16.1", default-features = false, features = [
+slint = { version = "=1.18.1", default-features = false, features = [
     "compat-1-2",
     "backend-winit",
     "renderer-skia",

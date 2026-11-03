@@ -56,6 +56,25 @@
     <key>CADisableMinimumFrameDurationOnPhone</key>
     <true/>
 
+    <!-- Slint 1.18+ подключает окна через UIScene; обязательно для iOS 27. -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key>
+                    <string>Slint</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>SlintWindowSceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
+
     <!-- Фоновая проверка новых оценок (BGAppRefreshTask) -->
     <key>UIBackgroundModes</key>
     <array>

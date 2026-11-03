@@ -5,50 +5,23 @@ import { ProfileView as MobileProfile } from "../../../crates/ui/ui/views/profil
 import { LoginScreen as MobileLogin } from "../../../crates/ui/ui/views/login.slint";
 import { NavItem as MobileNavItem } from "../../../crates/ui/ui/components/navigation.slint";
 import { SubjectsOverlay } from "../../../crates/ui/ui/views/subjects_overlay.slint";
-export { SubjectToggle, SubjectGrades as MobileSubjectGrades, GradeMark as MobileGradeMark } from "../../../crates/ui/ui/types.slint";
-import { SubjectToggle, SubjectGrades as MobileSubjectGrades } from "../../../crates/ui/ui/types.slint";
+// Shared views and their callers must use the same Slint struct definitions.
+export {
+    Lesson, ChildItem, RecentGrade, FinalMark, SubjectFinals,
+    ChartPoint, ChartDivider, SubjectChart, SubjectToggle,
+    SubjectGrades as MobileSubjectGrades, GradeMark as MobileGradeMark,
+} from "../../../crates/ui/ui/types.slint";
+import {
+    Lesson, ChildItem, RecentGrade, FinalMark, SubjectFinals,
+    ChartPoint, ChartDivider, SubjectChart, SubjectToggle,
+    SubjectGrades as MobileSubjectGrades,
+} from "../../../crates/ui/ui/types.slint";
 export { Theme as MobileTheme, Validate as MobileValidate } from "../../../crates/ui/ui/theme.slint";
 
 // Проверка времени (реализация в Rust). invalid(s) == true — формат/диапазон неверный.
 // Пустая строка считается корректной. Если Rust не подключит колбэк, по умолчанию false (валидация отключена).
 export global Validate {
     pure callback invalid(string) -> bool;
-}
-
-export struct Lesson {
-    number: int,
-    time: string,
-    subject: string,
-    room: string,
-    homework: string,
-    topic: string,
-    teacher: string,
-    mark: string,
-    mark-value: int,
-    absence: string,
-    grade-type: string,
-    is-event: bool,
-    event-id: string,
-    hw-done: bool,
-    hw-key: string,
-    hw-hint: string,
-    note: string,
-    note-key: string,
-}
-
-export struct ChildItem {
-    guid: string,
-    name: string,
-    school-class: string,
-    school-name: string,
-    selected: bool,
-}
-// Недавняя оценка (из последних дней) — с датой выставления
-export struct RecentGrade {
-    subject: string,
-    mark: string,
-    mark-val: int,
-    date: string,
 }
 
 // Одна оценка в ленте предмета
@@ -68,39 +41,6 @@ export struct DesktopSubjectGrades {
     n3: int,
     n2: int,
 }
-
-// Итоговая оценка за период (четверть / год)
-export struct FinalMark {
-    label: string,       // "1", "2", "3", "4", "Год"
-    average: string,     // "4.64" или "—"
-    average-val: float,
-}
-// Предмет с итоговыми оценками по всем периодам
-export struct SubjectFinals {
-    subject: string,
-    marks: [FinalMark],
-}
-
-// --- График успеваемости за год ---
-// Точка графика: относительные координаты 0..1 внутри области рисования.
-export struct ChartPoint {
-    px: float,     // 0..1 по горизонтали (позиция во времени)
-    py: float,     // 0..1 по вертикали (0 = верх/оценка 5, 1 = низ/оценка 2)
-    value: int,    // сама оценка (для цвета точки)
-}
-// Вертикальный пунктир — граница четверти.
-export struct ChartDivider {
-    px: float,     // 0..1 по горизонтали
-    label: string, // подпись четверти справа от линии ("2 чт")
-}
-// Полные данные графика по предмету.
-export struct SubjectChart {
-    subject: string,
-    points: [ChartPoint],
-    dividers: [ChartDivider],
-    has-data: bool,
-}
-// Ломаная линия графика в viewbox-координатах 0..1000 (готовая SVG-строка).
 
 // ============================================================
 //  Material 3 — цветовые роли (tonal surfaces + accent)
@@ -902,8 +842,8 @@ component LessonDetail inherits Rectangle {
             x: 0; y: 0;
             width: parent.width;
             height: parent.height;
-            viewport-width: self.width;
-            viewport-height: dcol.preferred-height;
+            content-width: self.width;
+            content-height: dcol.preferred-height;
 
             dcol := VerticalLayout {
                 width: parent.width;
@@ -1872,8 +1812,8 @@ component DiaryView inherits Rectangle {
             Flickable {
                 x: 0; y: 0;
                 width: parent.width; height: 140px;
-                viewport-width: max(parent.width, root.recent-grades.length * 142px + 12px);
-                viewport-height: self.height;
+                content-width: max(parent.width, root.recent-grades.length * 142px + 12px);
+                content-height: self.height;
 
                 HorizontalLayout {
                     y: 12px; height: 116px;
@@ -1906,13 +1846,13 @@ component DiaryView inherits Rectangle {
             flick := Flickable {
                 width: 100%;
                 height: 100%;
-                viewport-width: flick.width;
-                viewport-height: lessons-col.preferred-height;
+                content-width: flick.width;
+                content-height: lessons-col.preferred-height;
 
-                changed viewport-y => {
-                    if (self.viewport-y > 0px && !root.loading) {
-                        root.pull = self.viewport-y;
-                        if (self.viewport-y >= root.pull-trigger) {
+                changed content-y => {
+                    if (self.content-y > 0px && !root.loading) {
+                        root.pull = self.content-y;
+                        if (self.content-y >= root.pull-trigger) {
                             root.refresh();
                             root.pull = 0px;
                         }
@@ -1962,8 +1902,8 @@ component DiaryView inherits Rectangle {
                 }
             }
             // Индикатор Pull-to-refresh 
-            if flick.viewport-y > 5px && !root.loading : Rectangle {
-                property <length> display-pull: min(flick.viewport-y, 70px);
+            if flick.content-y > 5px && !root.loading : Rectangle {
+                property <length> display-pull: min(flick.content-y, 70px);
                 y: self.display-pull - 45px;
                 height: 40px; width: 40px;
                 x: (parent.width - self.width) / 2;
@@ -1971,12 +1911,12 @@ component DiaryView inherits Rectangle {
                 background: Theme.surface-container-high;
                 drop-shadow-blur: 6px;
                 drop-shadow-color: Theme.shadow;
-                opacity: min(flick.viewport-y / root.pull-trigger, 1.0);
+                opacity: min(flick.content-y / root.pull-trigger, 1.0);
                 
                 Text {
                     width: 100%;
                     height: 100%;
-                    text: flick.viewport-y >= root.pull-trigger ? "↑" : "——";
+                    text: flick.content-y >= root.pull-trigger ? "↑" : "——";
                     font-size: 18px;
                     color: Theme.primary;
                     horizontal-alignment: center;
@@ -2134,8 +2074,8 @@ component ProfileView inherits Rectangle {
     Flickable {
         width: 100%;
         height: 100%;
-        viewport-width: self.width;
-        viewport-height: content.preferred-height;
+        content-width: self.width;
+        content-height: content.preferred-height;
 
         content := VerticalLayout {
             width: min(parent.width - 32px, 700px);
@@ -3244,8 +3184,8 @@ component GradesView inherits Rectangle {
                 Flickable {
                     width: 100%;
                     height: 100%;
-                    viewport-width: max(self.width, chips.preferred-width);
-                    viewport-height: self.height;
+                    content-width: max(self.width, chips.preferred-width);
+                    content-height: self.height;
                     chips := HorizontalLayout {
                         padding-left: 20px;
                         padding-right: 20px;
@@ -3274,8 +3214,8 @@ component GradesView inherits Rectangle {
                     Flickable {
                         width: 100%;
                         height: 100%;
-                        viewport-width: self.width;
-                        viewport-height: scol.preferred-height;
+                        content-width: self.width;
+                        content-height: scol.preferred-height;
                         scol := VerticalLayout {
                             width: parent.width;
                             padding-left: 20px;
@@ -3310,8 +3250,8 @@ component GradesView inherits Rectangle {
                     if root.has-sel : Flickable {
                         width: 100%;
                         height: 100%;
-                        viewport-width: self.width;
-                        viewport-height: dcol.preferred-height;
+                        content-width: self.width;
+                        content-height: dcol.preferred-height;
                         dcol := VerticalLayout {
                             width: parent.width;
                             padding: 20px;
@@ -3384,8 +3324,8 @@ component GradesView inherits Rectangle {
                                     Flickable {
                                         width: 100%;
                                         height: 100%;
-                                        viewport-width: max(self.width, marks-flow.preferred-width);
-                                        viewport-height: self.height;
+                                        content-width: max(self.width, marks-flow.preferred-width);
+                                        content-height: self.height;
 
                                         marks-flow := HorizontalLayout {
                                             spacing: 8px;
@@ -3586,8 +3526,8 @@ component GradesView inherits Rectangle {
                         // Тело таблицы со скроллом
                         Flickable {
                             vertical-stretch: 1;
-                            viewport-width: self.width;
-                            viewport-height: table-body.preferred-height;
+                            content-width: self.width;
+                            content-height: table-body.preferred-height;
 
                             table-body := VerticalLayout {
                                 alignment: start;
@@ -4174,7 +4114,7 @@ component ChildSelectOverlay inherits Rectangle {
             Rectangle { height: 1px; background: Theme.outline-variant; }
 
             Flickable {
-                viewport-height: children-list.preferred-height;
+                content-height: children-list.preferred-height;
                 preferred-height: min(children-list.preferred-height, 300px);
                 max-height: 300px;
 

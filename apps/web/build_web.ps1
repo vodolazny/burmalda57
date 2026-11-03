@@ -18,7 +18,7 @@ Pop-Location
 wasm-bindgen `
     "$workspace\target\wasm32-unknown-unknown\release\burmalda57.wasm" `
     --out-dir "$root\web\pkg" `
-    --target web
+    --target web --remove-name-section
 
 # 3. Дополнительная оптимизация размера (wasm-opt из Binaryen), если установлена
 if (Get-Command wasm-opt -ErrorAction SilentlyContinue) {

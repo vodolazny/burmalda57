@@ -157,8 +157,8 @@ export component SimulatorSheet inherits Rectangle {
                 Flickable {
                     width: 100%;
                     height: 100%;
-                    viewport-width: self.width;
-                    viewport-height: exist-grid.min-height;
+                    content-width: self.width;
+                    content-height: exist-grid.min-height;
                     exist-grid := Rectangle {
                         width: 100%;
                         property <length> card-w: 46px;

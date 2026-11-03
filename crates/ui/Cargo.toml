@@ -6,7 +6,7 @@ license = "Apache-2.0"
 
 [dependencies]
 # Общий UI не выбирает backend/renderer: их включают оболочки приложений.
-slint = { version = "=1.16.1", default-features = false, features = ["compat-1-2", "std"] }
+slint = { version = "=1.18.1", default-features = false, features = ["compat-1-2", "std"] }
 
 [build-dependencies]
-slint-build = "=1.16.1"
+slint-build = "=1.18.1"

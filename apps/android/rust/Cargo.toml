@@ -1,6 +1,6 @@
 [package]
 name = "burmalda57-android"
-version = "1.7.6"
+version = "1.7.7"
 edition = "2021"
 license = "Apache-2.0"
 
@@ -25,7 +25,7 @@ burmalda57-mobile = { path = "../../../crates/mobile" }
 
 # UI
 burmalda57-ui = { path = "../../../crates/ui" }
-slint = { version = "=1.16.1", default-features = false, features = [
+slint = { version = "=1.18.1", default-features = false, features = [
     "compat-1-2",
     "renderer-femtovg",
     "backend-android-activity-06",

@@ -92,7 +92,7 @@ CORS-заголовки, браузер не даёт задать `User-Agent`,
 - **wasm-bindgen-cli** (версия должна совпадать с версией крейта
   `wasm-bindgen` в корневом `Cargo.lock`):
   ```bash
-  cargo install wasm-bindgen-cli --version 0.2.128
+  cargo install wasm-bindgen-cli --version 0.2.130 --locked
   ```
 
 ### Сборка
@@ -113,7 +113,7 @@ CORS-заголовки, браузер не даёт задать `User-Agent`,
 ```bash
 cargo build --release --target wasm32-unknown-unknown -p burmalda57-web
 wasm-bindgen ../../target/wasm32-unknown-unknown/release/burmalda57.wasm \
-    --out-dir web/pkg --target web
+    --out-dir web/pkg --target web --remove-name-section
 ```
 Для демо-сборки добавьте к `cargo build` флаг `--features demo-only`: она
 сразу открывает демо и отключает вход, выход и запросы к API.

@@ -9,7 +9,7 @@ members = [
     "crates/mobile",
 ]
 
-# Патченный Android-backend собран под slint 1.16.1, поэтому версия slint
+# Патченный Android-backend собран под slint 1.18.1, поэтому версия slint
 # закреплена точно в манифестах приложений.
 [patch.crates-io]
 i-slint-backend-android-activity = { path = "vendor/i-slint-backend-android-activity" }
@@ -20,6 +20,11 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# wasm-bindgen использует секцию target_features для обработки WASM.
+# Служебные секции сохраняем; имена удаляет wasm-bindgen после обработки.
+[profile.release.package.burmalda57-web]
+strip = "debuginfo"
 
 [profile.release.package.aes]
 opt-level = 3

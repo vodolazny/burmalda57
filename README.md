@@ -149,7 +149,7 @@ apps/web ───────────────────────�
 |---|---|---|
 | Android | JDK 17, SDK 34, NDK 29.0.14206865, `cargo-ndk` | `cd apps/android && ./build.sh --debug` |
 | iOS | macOS, Xcode, `cmake`, `ninja`, таргет `aarch64-apple-ios` | `cargo build --release --target aarch64-apple-ios -p burmalda57-ios --bin burmalda57-ios --features ios-app` |
-| Web | таргет `wasm32-unknown-unknown`, `wasm-bindgen-cli` 0.2.128 | `./apps/web/build_web.sh` (полная) или `--demo-only` |
+| Web | таргет `wasm32-unknown-unknown`, `wasm-bindgen-cli` 0.2.130 | `./apps/web/build_web.sh` (полная) или `--demo-only` |
 
 - **Android:** скрипт `build.sh` (Linux/macOS) и `build.ps1` (Windows) сами
   ставят недостающие зависимости; release требует `keystore.properties`.

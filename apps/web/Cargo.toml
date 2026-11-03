@@ -22,7 +22,7 @@ base64 = "0.21"
 getrandom = { version = "0.2", features = ["js"] }
 
 # UI
-slint = { version = "=1.16.1", default-features = false, features = [
+slint = { version = "=1.18.1", default-features = false, features = [
     "compat-1-2",
     "renderer-femtovg",
     "backend-winit",
@@ -65,4 +65,4 @@ features = [
 ]
 
 [build-dependencies]
-slint-build = "=1.16.1"
+slint-build = "=1.18.1"

@@ -87,7 +87,7 @@ export component SubjectsOverlay inherits Rectangle {
             }
 
             if root.items.length > 0 : Flickable {
-                viewport-height: subj-list.preferred-height;
+                content-height: subj-list.preferred-height;
                 preferred-height: min(subj-list.preferred-height, 360px);
                 max-height: 360px;
 

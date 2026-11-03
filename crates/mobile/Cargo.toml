@@ -7,7 +7,7 @@ license = "Apache-2.0"
 [dependencies]
 burmalda57-core = { path = "../core" }
 burmalda57-ui = { path = "../ui" }
-slint = { version = "=1.16.1", default-features = false, features = ["compat-1-2", "std"] }
+slint = { version = "=1.18.1", default-features = false, features = ["compat-1-2", "std"] }
 
 # Сеть/рантайм только здесь: core остаётся sans-IO.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "rustls-tls-webpki-roots"] }
