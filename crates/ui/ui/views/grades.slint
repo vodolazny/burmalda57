@@ -22,6 +22,7 @@ export component GradesView inherits Rectangle {
     // через select-mode() для ленивой загрузки годовых. Инициализируется из
     // входного mode; после первого тапа управление берёт UI.
     property <int> active-mode: root.mode;
+    changed mode => { root.active-mode = root.mode; }
 
     // Симулятор оценок
     in-out property <bool> sim-open: false;

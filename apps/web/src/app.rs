@@ -19,7 +19,9 @@ use crate::secure_storage::WebStore;
 use crate::ui_bridge;
 use crate::{AppWindow, Validate, APP_WEAK};
 
+#[derive(Clone)]
 pub(crate) struct PendingParentLogin {
+    pub generation: u64,
     pub sid: String,
     pub children: Vec<ChildInfo>,
     pub parent_name: String,
@@ -48,22 +50,26 @@ const DEMO_ONLY: bool = cfg!(feature = "demo-only");
 
 pub(crate) async fn app_main() {
     // DEK должен быть в памяти до Core::new: дальше хранилище синхронное.
-    if let Err(e) = crate::secure_storage::init_keystore().await {
-        log::error!("Не удалось инициализировать хранилище сессии: {e}");
-    }
+    let storage_error = crate::secure_storage::init_keystore()
+        .await
+        .err()
+        .map(|e| format!("Не удалось открыть хранилище. Перезапустите браузер: {e}"));
 
     let ui = AppWindow::new().expect("Не удалось создать окно");
     ui.set_demo_only(DEMO_ONLY);
-    ui.set_mobile_device(web_sys::window()
-        .and_then(|w| w.match_media("(pointer: coarse) and (max-device-width: 900px)").ok().flatten())
-        .map(|m| m.matches()).unwrap_or(false));
+    ui.set_mobile_device(
+        web_sys::window()
+            .and_then(|w| {
+                w.match_media("(pointer: coarse) and (max-device-width: 900px)")
+                    .ok()
+                    .flatten()
+            })
+            .map(|m| m.matches())
+            .unwrap_or(false),
+    );
     *APP_WEAK.lock().unwrap() = Some(ui.as_weak());
 
-    let core = Core::new(
-        STORAGE_PATH,
-        Box::new(WebStore),
-        CacheFormat::LegacyMap,
-    );
+    let core = Core::new(STORAGE_PATH, Box::new(WebStore), CacheFormat::LegacyMap);
     ui_bridge::apply_subject_filter(core.subject_toggles());
     let app = Arc::new(WebApp {
         http: WebHttp,
@@ -79,14 +85,21 @@ pub(crate) async fn app_main() {
     let _ = APP.set(app.clone());
 
     wire_callbacks(&ui, &app);
+    ui_bridge::wire_grade_math(&ui);
     ui.global::<Validate>()
         .on_invalid(|s| !is_valid_time(s.as_str()));
 
-    ui.global::<crate::MobileValidate>().on_invalid(|s| !is_valid_time(s.as_str()));
+    ui.global::<crate::MobileValidate>()
+        .on_invalid(|s| !is_valid_time(s.as_str()));
     crate::theme::apply_system_theme(&ui);
 
     if DEMO_ONLY {
         enter_demo(&app);
+    } else if let Some(error) = crate::http::configuration_error()
+        .map(str::to_owned)
+        .or(storage_error)
+    {
+        ui_bridge::apply_login_error(&error);
     } else {
         restore(app);
     }
@@ -111,24 +124,28 @@ fn wire_callbacks(ui: &AppWindow, app: &Arc<WebApp>) {
     ui.on_next_day(move || refresh_diary(&a, 1));
     let a = app.clone();
     ui.on_refresh_day(move || {
-        let action = a.core.lock().unwrap().force_refresh_diary();
+        let mut core = a.core.lock().unwrap();
+        let action = core.force_refresh_diary();
         apply_diary_action(&a, action);
     });
     let a = app.clone();
     ui.on_pick_date(move |y, m, d| {
-        let action = a.core.lock().unwrap().pick_date(y, m, d);
+        let mut core = a.core.lock().unwrap();
+        let action = core.pick_date(y, m, d);
         apply_diary_action(&a, action);
     });
 
     let a = app.clone();
     ui.on_grade_select(move |i| {
-        let action = a.core.lock().unwrap().select_period(i);
+        let mut core = a.core.lock().unwrap();
+        let action = core.select_period(i);
         apply_marks_action(&a, action);
     });
     let a = app.clone();
     ui.on_grade_mode_select(move |mode| {
+        let mut core = a.core.lock().unwrap();
         ui_bridge::apply_finals_mode(mode);
-        let action = a.core.lock().unwrap().select_finals_mode(mode);
+        let action = core.select_finals_mode(mode);
         apply_finals_action(&a, action);
     });
     let a = app.clone();
@@ -136,18 +153,16 @@ fn wire_callbacks(ui: &AppWindow, app: &Arc<WebApp>) {
 
     let a = app.clone();
     ui.on_add_event(move |name, start, end| {
-        let update =
-            a.core
-                .lock()
-                .unwrap()
-                .add_event_current(name.as_str(), start.as_str(), end.as_str());
+        let mut core = a.core.lock().unwrap();
+        let update = core.add_event_current(name.as_str(), start.as_str(), end.as_str());
         if let Some(u) = update {
             ui_bridge::apply_diary(u);
         }
     });
     let a = app.clone();
     ui.on_delete_event(move |id| {
-        let update = a.core.lock().unwrap().delete_event_current(id.as_str());
+        let mut core = a.core.lock().unwrap();
+        let update = core.delete_event_current(id.as_str());
         if let Some(u) = update {
             ui_bridge::apply_diary(u);
         }
@@ -157,7 +172,8 @@ fn wire_callbacks(ui: &AppWindow, app: &Arc<WebApp>) {
     ui.on_pick_avatar(crate::platform::pick_avatar);
 
     ui.on_open_child_select(|| ui_bridge::open_child_select(false));
-    ui.on_close_child_select(ui_bridge::close_child_select);
+    let a = app.clone();
+    ui.on_close_child_select(move || cancel_child_select(&a));
     let a = app.clone();
     ui.on_select_child(move |guid| select_child(&a, guid.to_string()));
 
@@ -178,16 +194,20 @@ fn wire_callbacks(ui: &AppWindow, app: &Arc<WebApp>) {
 
     let a = app.clone();
     ui.on_save_note(move |key, text| {
-        a.core.lock().unwrap().save_note(key.as_str(), text.as_str());
+        let mut core = a.core.lock().unwrap();
+        core.save_note(key.as_str(), text.as_str());
         // Keep the live editor text intact, including a just-typed space or newline.
         // Core normalizes the persisted value separately.
         ui_bridge::apply_note(key.to_string(), text.to_string());
     });
     let a = app.clone();
     ui.on_toggle_subject_hidden(move |subject, hidden| {
-        let update = a.core.lock().unwrap().set_subject_hidden(subject.as_str(), hidden);
+        let mut core = a.core.lock().unwrap();
+        let update = core.set_subject_hidden(subject.as_str(), hidden);
         ui_bridge::apply_subject_filter(update.toggles);
-        if let Some(diary) = update.diary { ui_bridge::apply_diary(diary); }
+        if let Some(diary) = update.diary {
+            ui_bridge::apply_diary(diary);
+        }
     });
 
     let a = app.clone();
@@ -208,56 +228,62 @@ fn wire_callbacks(ui: &AppWindow, app: &Arc<WebApp>) {
 //  Вход через X1_SSO
 // ============================================================
 pub(crate) fn handle_token(raw_token: &str) {
+    if DEMO_ONLY {
+        return;
+    }
+    if let Some(message) = crate::http::configuration_error() {
+        ui_bridge::apply_login_error(message);
+        return;
+    }
+
     let Some(app) = APP.get().cloned() else {
-        log::warn!("Токен пришёл до старта приложения");
         return;
     };
-
-    let mut sid = raw_token.to_string();
-    if raw_token.contains("X1_SSO=") {
-        for part in raw_token.split(';') {
-            let trimmed = part.trim();
-            if let Some(rest) = trimmed.strip_prefix("X1_SSO=") {
-                sid = rest.to_string();
-                break;
-            }
-        }
-    }
-    let sid = sid.trim().trim_matches('"').to_string();
-
-    let spawner = app.clone();
-    spawner.http.spawn(async move {
-        ui_bridge::apply_logging_in(true);
-        ui_bridge::apply_login_error("");
-        login_flow(app, sid).await;
+    let sid = raw_token
+        .split(';')
+        .find_map(|part| part.trim().strip_prefix("X1_SSO="))
+        .unwrap_or(raw_token)
+        .trim()
+        .trim_matches('"')
+        .to_string();
+    let mut core = app.core.lock().unwrap();
+    let generation = core.begin_auth();
+    *app.pending.lock().unwrap() = None;
+    ui_bridge::apply_logging_in(true);
+    ui_bridge::apply_login_error("");
+    drop(core);
+    let task = app.clone();
+    app.http.spawn(async move {
+        login_flow(task, sid, generation).await;
     });
 }
 
-async fn login_flow(app: Arc<WebApp>, sid: String) {
+async fn login_flow(app: Arc<WebApp>, sid: String, generation: u64) {
     let request = login_request(&sid);
-    let resp = match app.http.execute(&request).await {
-        Ok(r) => r,
-        Err(e) => return login_fail(LoginError::from_transport(e)),
+    let login = match app.http.execute(&request).await {
+        Ok(response) => match parse_login_http(response) {
+            Ok(login) => login,
+            Err(e) => return login_fail(&app, generation, e),
+        },
+        Err(e) => return login_fail(&app, generation, LoginError::from_transport(e)),
     };
-    let login = match parse_login_http(resp) {
-        Ok(r) => r,
-        Err(e) => return login_fail(e),
-    };
+    if !app.core.lock().unwrap().auth_is_current(generation) {
+        return;
+    }
     let account = match burmalda57_core::login::account_from(&login) {
-        Ok(a) => a,
-        Err(e) => return login_fail(e),
+        Ok(account) => account,
+        Err(e) => return login_fail(&app, generation, e),
     };
-
     match account {
         LoginAccount::Student { guid } => {
             let key = match init_session(&app, &sid, &guid).await {
-                Ok(k) => k,
-                Err(e) => return login_fail(e),
+                Ok(key) => key,
+                Err(e) => return login_fail(&app, generation, e),
             };
             let Some(session) = build_student_session(&sid, &key, &login) else {
-                return login_fail(LoginError::BadData);
+                return login_fail(&app, generation, LoginError::BadData);
             };
-            finish_login(&app, session);
+            finish_login(&app, generation, session);
         }
         LoginAccount::Parent {
             children,
@@ -266,15 +292,21 @@ async fn login_flow(app: Arc<WebApp>, sid: String) {
             if children.len() == 1 {
                 let child = children[0].clone();
                 let key = match init_session(&app, &sid, &child.guid).await {
-                    Ok(k) => k,
-                    Err(e) => return login_fail(e),
+                    Ok(key) => key,
+                    Err(e) => return login_fail(&app, generation, e),
                 };
-                let session =
-                    build_parent_session(&sid, &key, &child, parent_name, children);
-                finish_login(&app, session);
+                finish_login(
+                    &app,
+                    generation,
+                    build_parent_session(&sid, &key, &child, parent_name, children),
+                );
             } else {
-                log::info!("Родитель: {} детей — показываем выбор", children.len());
+                let core = app.core.lock().unwrap();
+                if !core.auth_is_current(generation) {
+                    return;
+                }
                 *app.pending.lock().unwrap() = Some(PendingParentLogin {
+                    generation,
                     sid,
                     children: children.clone(),
                     parent_name,
@@ -293,139 +325,151 @@ async fn init_session(app: &Arc<WebApp>, sid: &str, guid: &str) -> Result<String
     }
 }
 
-fn finish_login(app: &Arc<WebApp>, session: UserSession) {
-    let saved = app.core.lock().unwrap().adopt_login_session(session.clone());
-    if let Err(e) = saved {
+fn finish_login(app: &Arc<WebApp>, generation: u64, session: UserSession) {
+    let mut core = app.core.lock().unwrap();
+    if !core.auth_is_current(generation) {
+        return;
+    }
+    if let Err(e) = core.adopt_login_session(session.clone()) {
         log::error!("Не удалось сохранить сессию: {e}");
-        return login_fail(LoginError::Storage);
+        ui_bridge::apply_login_error(&LoginError::Storage.user_message());
+        ui_bridge::apply_logging_in(false);
+        return;
     }
     *app.pending.lock().unwrap() = None;
     ui_bridge::apply_session(&session);
+    ui_bridge::apply_subject_filter(core.subject_toggles());
+    ui_bridge::apply_logging_in(false);
+
+    drop(core);
     refresh_diary(app, 0);
     refresh_recent(app);
     refresh_marks(app);
     refresh_finals(app);
+}
+
+fn login_fail(app: &Arc<WebApp>, generation: u64, error: LoginError) {
+    let core = app.core.lock().unwrap();
+    if !core.auth_is_current(generation) {
+        return;
+    }
+    ui_bridge::apply_login_error(&error.user_message());
     ui_bridge::apply_logging_in(false);
 }
 
-fn login_fail(err: LoginError) {
-    let msg = err.user_message();
-    log::error!("Ошибка входа: {msg}");
-    ui_bridge::apply_login_error(&msg);
+fn show_message(_app: &Arc<WebApp>, message: &str) {
+    crate::platform::show_toast(message);
+}
+
+fn cancel_child_select(app: &Arc<WebApp>) {
+    let mut core = app.core.lock().unwrap();
+    if app.pending.lock().unwrap().is_some() {
+        return;
+    }
+    core.begin_auth();
     ui_bridge::apply_logging_in(false);
+    ui_bridge::close_child_select();
 }
 
 // ============================================================
 //  Выбор ребёнка: после входа / демо / из профиля
 // ============================================================
 fn select_child(app: &Arc<WebApp>, guid: String) {
-    if let Some(pending) = app.pending.lock().unwrap().take() {
+    let mut core = app.core.lock().unwrap();
+    let pending = app.pending.lock().unwrap().clone();
+    if let Some(mut pending) = pending {
+        if !core.auth_is_current(pending.generation) {
+            return;
+        }
+        pending.generation = core.begin_auth();
+        *app.pending.lock().unwrap() = Some(pending.clone());
+        ui_bridge::apply_login_error("");
+        ui_bridge::apply_logging_in(true);
+        drop(core);
         login_selected_child(app, pending, guid);
         return;
     }
-
-    let (demo, session) = {
-        let core = app.core.lock().unwrap();
-        (core.demo, core.session_clone())
-    };
-    let Some(session) = session else {
+    let Some(session) = core.session_clone() else {
         ui_bridge::close_child_select();
         return;
     };
-
-    if demo {
-        if let Some(child) = session.children.iter().find(|c| c.guid == guid).cloned() {
-            let mut updated = session;
-            updated.user_guid = child.guid.clone();
-            updated.full_name = child.full_name.clone();
-            updated.school_name = child.school_name.clone();
-            updated.school_class = child.school_class.clone();
-            app.core.lock().unwrap().switch_demo_session(updated.clone());
-
-            ui_bridge::close_child_select();
-            ui_bridge::apply_session(&updated);
-            refresh_marks(app);
-            refresh_finals(app);
-            refresh_diary(app, 0);
-            refresh_recent(app);
-            crate::platform::show_toast(&format!("Выбран ученик: {}", child.full_name));
-        }
-        return;
-    }
-
-    if session.user_guid == guid {
-        ui_bridge::close_child_select();
-        return;
-    }
-
     let Some(child) = session.children.iter().find(|c| c.guid == guid).cloned() else {
-        ui_bridge::close_child_select();
         return;
     };
-
-    let spawner = app.clone();
+    if session.user_guid == guid {
+        core.begin_auth();
+        ui_bridge::close_child_select();
+        return;
+    }
+    let mut updated = session.clone();
+    updated.user_guid = child.guid.clone();
+    updated.full_name = child.full_name.clone();
+    updated.school_name = child.school_name.clone();
+    updated.school_class = child.school_class.clone();
+    if core.demo {
+        core.switch_demo_session(updated.clone());
+        ui_bridge::apply_session(&updated);
+        ui_bridge::apply_subject_filter(core.subject_toggles());
+        drop(core);
+        refresh_marks(app);
+        refresh_finals(app);
+        refresh_diary(app, 0);
+        refresh_recent(app);
+        return;
+    }
+    let generation = core.begin_auth();
+    let epoch = core.session_epoch();
+    ui_bridge::apply_login_error("");
+    ui_bridge::apply_logging_in(true);
+    drop(core);
     let task = app.clone();
-    spawner.http.spawn(async move {
+    app.http.spawn(async move {
         let request = init_session_request(&session.sid, &guid);
-        let key = match task.http.execute(&request).await {
-            Ok(resp) => match parse_init_http(resp) {
-                Ok(k) => k,
-                Err(e) => {
-                    log::error!("Переключение ученика: {}", e.user_message());
-                    crate::platform::show_toast(
-                        "Не удалось переключить ученика. Проверьте сеть.",
-                    );
-                    return;
-                }
-            },
-            Err(_) => {
-                crate::platform::show_toast(
-                    "Не удалось переключить ученика. Проверьте сеть.",
-                );
+        let result = match task.http.execute(&request).await {
+            Ok(response) => parse_init_http(response),
+            Err(e) => Err(LoginError::from_transport(e)),
+        };
+        let mut core = task.core.lock().unwrap();
+        if !core.auth_is_current(generation) || core.session_epoch() != epoch {
+            return;
+        }
+        let key = match result {
+            Ok(key) => key,
+            Err(e) => {
+                ui_bridge::apply_login_error(&e.user_message());
+                ui_bridge::apply_logging_in(false);
+                show_message(&task, "Не удалось переключить ученика. Проверьте сеть.");
                 return;
             }
         };
-
-        let mut updated = session;
-        updated.user_guid = child.guid.clone();
         updated.apikey = key;
-        updated.full_name = child.full_name.clone();
-        updated.school_name = child.school_name.clone();
-        updated.school_class = child.school_class.clone();
-
-        if let Err(e) = task
-            .core
-            .lock()
-            .unwrap()
-            .apply_switched_session(updated.clone())
-        {
+        if let Err(e) = core.apply_switched_session(updated.clone()) {
             log::error!("Не удалось сохранить сессию ребёнка: {e}");
-            crate::platform::show_toast("Не удалось переключить ученика. Проверьте сеть.");
+            ui_bridge::apply_login_error(&LoginError::Storage.user_message());
+            ui_bridge::apply_logging_in(false);
             return;
         }
-
-        ui_bridge::close_child_select();
         ui_bridge::apply_session(&updated);
+        ui_bridge::apply_subject_filter(core.subject_toggles());
+        ui_bridge::apply_logging_in(false);
+        drop(core);
         refresh_marks(&task);
         refresh_finals(&task);
         refresh_diary(&task, 0);
         refresh_recent(&task);
-        crate::platform::show_toast(&format!("Выбран ученик: {}", child.full_name));
+        show_message(&task, &format!("Выбран ученик: {}", child.full_name));
     });
 }
 
 fn login_selected_child(app: &Arc<WebApp>, pending: PendingParentLogin, guid: String) {
     let Some(child) = pending.children.iter().find(|c| c.guid == guid).cloned() else {
-        ui_bridge::close_child_select();
-        return;
+        return login_fail(app, pending.generation, LoginError::BadData);
     };
-    let spawner = app.clone();
     let task = app.clone();
-    spawner.http.spawn(async move {
-        ui_bridge::apply_logging_in(true);
+    app.http.spawn(async move {
         let key = match init_session(&task, &pending.sid, &child.guid).await {
-            Ok(k) => k,
-            Err(e) => return login_fail(e),
+            Ok(key) => key,
+            Err(e) => return login_fail(&task, pending.generation, e),
         };
         let session = build_parent_session(
             &pending.sid,
@@ -434,8 +478,7 @@ fn login_selected_child(app: &Arc<WebApp>, pending: PendingParentLogin, guid: St
             pending.parent_name,
             pending.children,
         );
-        ui_bridge::close_child_select();
-        finish_login(&task, session);
+        finish_login(&task, pending.generation, session);
     });
 }
 
@@ -443,8 +486,13 @@ fn login_selected_child(app: &Arc<WebApp>, pending: PendingParentLogin, guid: St
 //  Демо и выход
 // ============================================================
 fn enter_demo(app: &Arc<WebApp>) {
-    let session = app.core.lock().unwrap().enter_demo();
+    let mut core = app.core.lock().unwrap();
+    let session = core.enter_demo();
+    *app.pending.lock().unwrap() = None;
     ui_bridge::apply_session(&session);
+    ui_bridge::apply_subject_filter(core.subject_toggles());
+    ui_bridge::apply_logging_in(false);
+    drop(core);
     refresh_marks(app);
     refresh_finals(app);
     refresh_diary(app, 0);
@@ -452,7 +500,8 @@ fn enter_demo(app: &Arc<WebApp>) {
 }
 
 fn logout(app: &Arc<WebApp>) {
-    app.core.lock().unwrap().logout();
+    let mut core = app.core.lock().unwrap();
+    core.logout();
     *app.pending.lock().unwrap() = None;
     ui_bridge::reset_logged_out();
 }
@@ -461,15 +510,15 @@ fn logout(app: &Arc<WebApp>) {
 //  Восстановление сессии при старте
 // ============================================================
 fn restore(app: Arc<WebApp>) {
-    let session = app.core.lock().unwrap().restore_session();
-    let Some(session) = session else {
-        log::info!("Локальная сессия не найдена или не расшифровалась.");
+    let mut core = app.core.lock().unwrap();
+    let Some(session) = core.restore_session() else {
         return;
     };
-    log::info!("Сессия восстановлена с диска");
+    ui_bridge::apply_session(&session);
+    ui_bridge::apply_subject_filter(core.subject_toggles());
+    drop(core);
     refresh_marks(&app);
     refresh_finals(&app);
-    ui_bridge::apply_session(&session);
     refresh_diary(&app, 0);
     refresh_recent(&app);
 }
@@ -478,7 +527,8 @@ fn restore(app: Arc<WebApp>) {
 //  Дневник
 // ============================================================
 fn refresh_diary(app: &Arc<WebApp>, delta: i64) {
-    let action = app.core.lock().unwrap().refresh_diary(delta);
+    let mut core = app.core.lock().unwrap();
+    let action = core.refresh_diary(delta);
     apply_diary_action(app, action);
 }
 
@@ -492,7 +542,8 @@ fn apply_diary_action(app: &Arc<WebApp>, action: Option<DiaryAction>) {
             let task = app.clone();
             spawner.http.spawn(async move {
                 let result = task.http.execute(&fetch.request).await;
-                let update = task.core.lock().unwrap().complete_diary(&fetch, result);
+                let mut core = task.core.lock().unwrap();
+                let update = core.complete_diary(&fetch, result);
                 if let Some(u) = update {
                     ui_bridge::apply_diary(u);
                 }
@@ -505,7 +556,8 @@ fn apply_diary_action(app: &Arc<WebApp>, action: Option<DiaryAction>) {
 //  Оценки по периодам
 // ============================================================
 fn refresh_marks(app: &Arc<WebApp>) {
-    let action = app.core.lock().unwrap().init_marks();
+    let mut core = app.core.lock().unwrap();
+    let action = core.init_marks();
     apply_marks_action(app, action);
 }
 
@@ -523,7 +575,8 @@ fn apply_marks_action(app: &Arc<WebApp>, action: Option<MarksAction>) {
             let task = app.clone();
             spawner.http.spawn(async move {
                 let result = task.http.execute(&request).await;
-                let next = task.core.lock().unwrap().complete_periods(gen, result);
+                let mut core = task.core.lock().unwrap();
+                let next = core.complete_periods(gen, result);
                 apply_marks_action(&task, next);
             });
         }
@@ -533,7 +586,8 @@ fn apply_marks_action(app: &Arc<WebApp>, action: Option<MarksAction>) {
             let task = app.clone();
             spawner.http.spawn(async move {
                 let result = task.http.execute(&fetch.request).await;
-                let update = task.core.lock().unwrap().complete_marks(&fetch, result);
+                let mut core = task.core.lock().unwrap();
+                let update = core.complete_marks(&fetch, result);
                 if let Some(u) = update {
                     ui_bridge::apply_marks(u);
                 }
@@ -546,8 +600,9 @@ fn apply_marks_action(app: &Arc<WebApp>, action: Option<MarksAction>) {
 //  График успеваемости
 // ============================================================
 fn open_chart(app: &Arc<WebApp>, subject: String) {
+    let mut core = app.core.lock().unwrap();
     ui_bridge::apply_chart(ChartView::default());
-    let step = app.core.lock().unwrap().open_chart(&subject);
+    let step = core.open_chart(&subject);
     if matches!(step, ChartStep::Fetch(_)) {
         ui_bridge::apply_chart_loading(true);
     }
@@ -563,11 +618,8 @@ fn apply_chart_step(app: &Arc<WebApp>, step: ChartStep) {
             let task = app.clone();
             spawner.http.spawn(async move {
                 let result = task.http.execute(&fetch.request).await;
-                let next = task
-                    .core
-                    .lock()
-                    .unwrap()
-                    .chart_supply(fetch.gen, fetch.index, result);
+                let mut core = task.core.lock().unwrap();
+                let next = core.chart_supply(&fetch, result);
                 apply_chart_step(&task, next);
             });
         }
@@ -578,7 +630,8 @@ fn apply_chart_step(app: &Arc<WebApp>, step: ChartStep) {
 //  Итоговые оценки
 // ============================================================
 fn refresh_finals(app: &Arc<WebApp>) {
-    let update = app.core.lock().unwrap().init_finals();
+    let mut core = app.core.lock().unwrap();
+    let update = core.init_finals();
     if let Some(u) = update {
         ui_bridge::apply_finals(u);
     }
@@ -594,7 +647,8 @@ fn apply_finals_action(app: &Arc<WebApp>, action: Option<FinalsAction>) {
             let task = app.clone();
             spawner.http.spawn(async move {
                 let result = task.http.execute(&fetch.request).await;
-                let update = task.core.lock().unwrap().complete_finals(&fetch, result);
+                let mut core = task.core.lock().unwrap();
+                let update = core.complete_finals(&fetch, result);
                 if let Some(u) = update {
                     ui_bridge::apply_finals(u);
                 }
@@ -607,7 +661,8 @@ fn apply_finals_action(app: &Arc<WebApp>, action: Option<FinalsAction>) {
 //  Лента недавних оценок (стратегия веба — по дням дневника)
 // ============================================================
 fn refresh_recent(app: &Arc<WebApp>) {
-    let action = app.core.lock().unwrap().recent_diary_start();
+    let mut core = app.core.lock().unwrap();
+    let action = core.recent_diary_start();
     apply_recent_action(app, action);
 }
 
@@ -620,11 +675,8 @@ fn apply_recent_action(app: &Arc<WebApp>, action: RecentDiaryAction) {
             let task = app.clone();
             spawner.http.spawn(async move {
                 let result = task.http.execute(&fetch.request).await;
-                let next = task
-                    .core
-                    .lock()
-                    .unwrap()
-                    .recent_diary_supply(&fetch, result);
+                let mut core = task.core.lock().unwrap();
+                let next = core.recent_diary_supply(&fetch, result);
                 apply_recent_action(&task, next);
             });
         }

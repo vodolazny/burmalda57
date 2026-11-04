@@ -54,10 +54,38 @@ jobs:
             | head -n1)
           cargo install wasm-bindgen-cli --version "$VERSION" --locked
 
+      - name: Сборка полной веб-версии для проверок
+        # Полную версию проверяем браузером до замены её публичным демо.
+        run: |
+          cargo build --locked --release --target wasm32-unknown-unknown -p burmalda57-web
+          wasm-bindgen target/wasm32-unknown-unknown/release/burmalda57.wasm \
+            --out-dir apps/web/web/pkg --target web --remove-name-section
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/tests/package-lock.json
+
+      - name: Проверки сессий и ключей в Chromium
+        working-directory: apps/web/tests
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm test
+
+      - name: Снимки браузерных проверок
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-regressions
+          path: apps/web/tests/artifacts
+          if-no-files-found: ignore
+
       - name: Сборка демо и генерация JS-обвязки
         run: |
           # Pages — только демо: API дневника не работает с публичного хостинга.
-          cargo build --release --target wasm32-unknown-unknown -p burmalda57-web --features demo-only
+          cargo build --locked --release --target wasm32-unknown-unknown -p burmalda57-web --features demo-only
           wasm-bindgen \
             target/wasm32-unknown-unknown/release/burmalda57.wasm \
             --out-dir apps/web/web/pkg \

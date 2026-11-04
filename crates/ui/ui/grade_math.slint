@@ -1,0 +1,18 @@
+import { GradeMark } from "types.slint";
+
+export struct GradeSimulation {
+    average: float,
+    average-text: string,
+    count: int,
+    final-mark: int,
+    n2: int,
+    n3: int,
+    n4: int,
+    n5: int,
+    fives-needed: int,
+    weighted: bool,
+}
+
+export global GradeMath {
+    pure callback project([GradeMark], int, int, int, int) -> GradeSimulation;
+}

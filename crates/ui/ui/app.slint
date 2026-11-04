@@ -4,6 +4,7 @@ export {
     SubjectGrades, FinalMark, SubjectFinals, ChartPoint, ChartDivider, SubjectChart
 } from "types.slint";
 export { Validate, Theme, CalMath } from "theme.slint";
+export { GradeMath, GradeSimulation } from "grade_math.slint";
 
 import { Theme } from "theme.slint";
 import {
@@ -325,6 +326,8 @@ export component AppWindow inherits Window {
         height: 100%;
         items: root.children-list;
         is-login: root.child-select-is-login;
+        busy: root.logging-in;
+        error: root.login-error;
         select-child(g) => { root.select-child(g); }
         close => { root.close-child-select(); }
     }

@@ -441,7 +441,8 @@ impl AndroidWindowAdapter {
                             }
                             InputStatus::Handled
                         }
-                        MotionAction::Scroll => todo!(),
+                        // Do not abort the process for an external mouse/trackpad.
+                        MotionAction::Scroll => InputStatus::Unhandled,
                         MotionAction::HoverEnter | MotionAction::HoverExit => {
                             InputStatus::Unhandled
                         }

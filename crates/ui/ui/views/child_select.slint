@@ -6,6 +6,8 @@ import { ChildItemCard } from "../components/cards.slint";
 export component ChildSelectOverlay inherits Rectangle {
     in property <[ChildItem]> items;
     in property <bool> is-login: false;
+    in property <bool> busy: false;
+    in property <string> error;
     callback select-child(string);
     callback close();
 
@@ -81,6 +83,12 @@ export component ChildSelectOverlay inherits Rectangle {
             }
 
             Rectangle { height: 1px; background: Theme.outline-variant; }
+            if root.busy || root.error != "" : Text {
+                text: root.busy ? "Загрузка…" : root.error;
+                color: root.busy ? Theme.on-surface-variant : Theme.error;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
 
             Flickable {
                 content-height: children-list.preferred-height;
@@ -97,7 +105,7 @@ export component ChildSelectOverlay inherits Rectangle {
                         school-name: item.school-name;
                         selected: item.selected;
                         clicked => {
-                            root.select-child(item.guid);
+                            if !root.busy { root.select-child(item.guid); }
                         }
                     }
                 }

@@ -2,6 +2,7 @@ import { Theme } from "../theme.slint";
 import { GradeMark } from "../types.slint";
 import { MarkColor, MarkToken, MarkMicroCard } from "../components/marks.slint";
 import { SimStepper, MaterialButton } from "../components/buttons.slint";
+import { GradeMath, GradeSimulation } from "../grade_math.slint";
 
 export component SimulatorSheet inherits Rectangle {
     in property <string> subject;
@@ -18,23 +19,17 @@ export component SimulatorSheet inherits Rectangle {
     property <bool> easter-egg-open: false;
 
     // Сколько реальных оценок каждого значения есть (считается при открытии)
-    property <int> exist2;
-    property <int> exist3;
-    property <int> exist4;
-    property <int> exist5;
+    property <GradeSimulation> original: GradeMath.project(root.source-marks, 0, 0, 0, 0);
+    property <GradeSimulation> projection: GradeMath.project(root.source-marks, root.net2, root.net3, root.net4, root.net5);
+    property <int> exist2: root.original.n2;
+    property <int> exist3: root.original.n3;
+    property <int> exist4: root.original.n4;
+    property <int> exist5: root.original.n5;
 
     property <int> change-count: root.net2 + root.net3 + root.net4 + root.net5;
-    property <float> change-sum: root.net2 * 2 + root.net3 * 3 + root.net4 * 4 + root.net5 * 5;
-    property <int> total-count: root.real-count + root.change-count;
-    property <float> real-sum: root.real-avg * root.real-count;
-    property <float> proj-avg: root.total-count <= 0 ? 0 : (root.real-sum + root.change-sum) / root.total-count;
-    property <int> proj-final: root.total-count <= 0 ? 0
-        : root.proj-avg.floor() + ((root.proj-avg - root.proj-avg.floor()) >= 0.5999 ? 1 : 0);
-    property <int> avg-hundredths: root.total-count <= 0 ? 0 : (root.proj-avg * 100 + 0.5).floor();
-    property <int> avg-int: (root.avg-hundredths / 100).floor();
-    property <int> avg-frac: root.avg-hundredths - root.avg-int * 100;
-    property <string> frac-str: root.avg-frac < 10 ? "0\{root.avg-frac}" : "\{root.avg-frac}";
-    property <string> proj-avg-str: root.total-count == 0 ? "—" : "\{root.avg-int}.\{root.frac-str}";
+    property <int> total-count: root.projection.count;
+    property <int> proj-final: root.projection.final-mark;
+    property <string> proj-avg-str: root.projection.average-text;
 
     background: #000000.transparentize(0.5);
 
@@ -174,12 +169,6 @@ export component SimulatorSheet inherits Rectangle {
                             y: self.cell-row * (exist-grid.card-h + exist-grid.gap);
                             value: m.value;
                             date: m.date;
-                            init => {
-                                root.exist2 += m.value == 2 ? 1 : 0;
-                                root.exist3 += m.value == 3 ? 1 : 0;
-                                root.exist4 += m.value == 4 ? 1 : 0;
-                                root.exist5 += m.value == 5 ? 1 : 0;
-                            }
                         }
                     }
                 }
@@ -215,7 +204,9 @@ export component SimulatorSheet inherits Rectangle {
 
             Text {
                 letter-spacing: Theme.tracking;
-                text: "Это прикидка: как изменится средний балл, если добавить или убрать оценки. Реальные оценки не меняются.";
+                text: root.original.weighted
+                    ? "Новые оценки имеют вес 1. При удалении учитывается вес последней оценки этого значения. Реальные оценки не меняются."
+                    : "Это прикидка: как изменится средний балл, если добавить или убрать оценки. Реальные оценки не меняются.";
                 font-size: 11px;
                 color: Theme.on-surface-variant;
                 wrap: word-wrap;

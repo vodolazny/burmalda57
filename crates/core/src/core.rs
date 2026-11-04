@@ -12,11 +12,12 @@ use crate::diary::{self, DiaryLessonData};
 use crate::finals;
 use crate::marks;
 use crate::model::{
-    ChildInfo, ChartView, DateView, DiaryView, LessonView, Mark, Period, RecentGradeView,
+    ChartView, ChildInfo, DateView, DiaryView, LessonView, Mark, Period, RecentGradeView,
     SubjectFinalsView, SubjectGradesView, SubjectToggleView, UserSession,
 };
 use crate::ports::{CacheFormat, SecureStore};
 use crate::stores::{EventsStore, HomeworkStore, NotesStore, SubjectsStore};
+use std::collections::HashMap;
 
 // ============================================================
 //  Результаты операций для UI
@@ -40,12 +41,17 @@ pub struct DiaryFetch {
     pub request: ApiRequest,
     pub date: String,
     pub gen: u64,
+    pub session_epoch: u64,
+    pub cache_gen: u64,
 }
 
 #[derive(Clone, Debug)]
 pub enum DiaryAction {
     Render(DiaryUpdate),
-    Fetch { update: DiaryUpdate, fetch: DiaryFetch },
+    Fetch {
+        update: DiaryUpdate,
+        fetch: DiaryFetch,
+    },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -63,6 +69,8 @@ pub struct MarksFetch {
     pub range: String,
     pub gen: u64,
     pub had_cache: bool,
+    pub session_epoch: u64,
+    pub cache_gen: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -84,6 +92,7 @@ pub struct ChartFetch {
     pub request: ApiRequest,
     pub gen: u64,
     pub index: usize,
+    pub cache_gen: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -106,6 +115,7 @@ pub struct FinalsFetch {
     pub request: ApiRequest,
     pub gen: u64,
     pub had_cache: bool,
+    pub session_epoch: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -118,9 +128,16 @@ pub enum FinalsAction {
 }
 
 #[derive(Clone, Debug)]
+pub struct RecentFetch {
+    pub request: ApiRequest,
+    pub session_epoch: u64,
+    pub gen: u64,
+}
+
+#[derive(Clone, Debug)]
 pub enum RecentAction {
     Render(Vec<RecentGradeView>),
-    Fetch(ApiRequest),
+    Fetch(RecentFetch),
 }
 
 // Лента недавних оценок по дням дневника (историческая стратегия веба:
@@ -131,6 +148,7 @@ pub struct RecentDiaryFetch {
     pub date: String,
     pub label: String,
     pub gen: u64,
+    pub cache_gen: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -169,6 +187,12 @@ pub struct Core {
     storage_path: String,
     store: Box<dyn SecureStore>,
     cache_format: CacheFormat,
+    session_epoch: u64,
+    auth_generation: u64,
+    cache_sequence: u64,
+    diary_versions: HashMap<String, u64>,
+    grade_versions: HashMap<String, u64>,
+    recent_gen: u64,
 
     pub session: Option<UserSession>,
     pub demo: bool,
@@ -224,6 +248,12 @@ impl Core {
             storage_path,
             store,
             cache_format,
+            session_epoch: 0,
+            auth_generation: 0,
+            cache_sequence: 0,
+            diary_versions: HashMap::new(),
+            grade_versions: HashMap::new(),
+            recent_gen: 0,
             session: None,
             demo: false,
             current_date: None,
@@ -258,6 +288,25 @@ impl Core {
         self.store.as_ref()
     }
 
+    pub fn session_epoch(&self) -> u64 {
+        self.session_epoch
+    }
+
+    /// Invalidated by another login/selection, cancellation or session change.
+    pub fn begin_auth(&mut self) -> u64 {
+        self.auth_generation = self.auth_generation.wrapping_add(1);
+        self.auth_generation
+    }
+
+    pub fn auth_is_current(&self, generation: u64) -> bool {
+        self.auth_generation == generation
+    }
+
+    fn next_cache_generation(&mut self) -> u64 {
+        self.cache_sequence = self.cache_sequence.wrapping_add(1);
+        self.cache_sequence
+    }
+
     // ========================================================
     //  Сессия
     // ========================================================
@@ -280,8 +329,10 @@ impl Core {
                 return None;
             }
         };
+        self.reset_learning_state();
         self.session = Some(session.clone());
         self.demo = false;
+        self.migrate_local_keys(&session.user_guid);
         self.diary_cache = DayCache::load(self.store.as_ref(), &self.storage_path);
         Some(session)
     }
@@ -291,6 +342,7 @@ impl Core {
         if persist {
             self.save_session(&session)?;
         }
+        self.reset_learning_state();
         self.session = Some(session);
         self.demo = false;
         Ok(())
@@ -303,11 +355,13 @@ impl Core {
                 .session
                 .as_ref()
                 .map(|s| s.user_guid != session.user_guid)
-                .unwrap_or(false);
+                .unwrap_or(true);
         self.save_session(&session)?;
+        self.reset_learning_state();
         if switched {
-            self.reset_learning_state();
             self.delete_server_caches();
+        } else {
+            self.diary_cache = DayCache::load(self.store.as_ref(), &self.storage_path);
         }
         self.demo = false;
         self.session = Some(session);
@@ -341,6 +395,7 @@ impl Core {
 
     pub fn enter_demo(&mut self) -> UserSession {
         let session = demo_session();
+        self.reset_learning_state();
         self.demo = true;
         self.session = Some(session.clone());
         session
@@ -358,6 +413,11 @@ impl Core {
     }
 
     fn reset_learning_state(&mut self) {
+        self.session_epoch = self.session_epoch.wrapping_add(1);
+        self.begin_auth();
+        self.diary_versions.clear();
+        self.grade_versions.clear();
+        self.recent_gen = self.recent_gen.wrapping_add(1);
         self.diary_cache = DayCache::default();
         self.diary_gen = self.diary_gen.wrapping_add(1);
         self.marks_gen = self.marks_gen.wrapping_add(1);
@@ -369,10 +429,35 @@ impl Core {
         self.finals_gen = self.finals_gen.wrapping_add(1);
         self.finals_raw = None;
         self.finals_fetched = false;
+        self.finals_mode = 0;
         self.chart_gen = self.chart_gen.wrapping_add(1);
         self.chart_job = None;
         self.recent_diary_gen = self.recent_diary_gen.wrapping_add(1);
         self.recent_diary_job = None;
+    }
+
+    fn migrate_local_keys(&mut self, guid: &str) {
+        // Only a saved session identifies the owner of legacy unscoped records.
+        let prefix = format!("student:{guid}|");
+        self.notes
+            .migrate_legacy(self.store.as_ref(), &self.storage_path, &prefix);
+        self.homework
+            .migrate_legacy(self.store.as_ref(), &self.storage_path, &prefix);
+    }
+
+    fn scoped_lesson_key(&self, date: &str, number: i32, subject: &str) -> String {
+        let guid = self
+            .session
+            .as_ref()
+            .map(|s| s.user_guid.as_str())
+            .unwrap_or_default();
+        format!("student:{guid}|{}", NotesStore::key(date, number, subject))
+    }
+
+    fn owns_lesson_key(&self, key: &str) -> bool {
+        self.session
+            .as_ref()
+            .is_some_and(|s| key.starts_with(&format!("student:{}|", s.user_guid)))
     }
 
     fn delete_server_caches(&self) {
@@ -411,7 +496,6 @@ impl Core {
             next
         };
         self.session.as_ref()?;
-        let date_view = date_view(&date);
 
         if self.demo {
             let lessons = diary::demo_lessons(&date);
@@ -438,25 +522,26 @@ impl Core {
             }
         }
 
-        let cached = self.diary_cache.get_raw(&date);
-        let mut update = DiaryUpdate {
-            date: Some(date_view),
-            ..Default::default()
-        };
-        if let Some(raw) = &cached {
-            let built = self.build_diary_update(&date, diary::parse(raw));
-            update.view = built.view;
-            update.toggles = built.toggles;
-        }
+        let cached = self
+            .diary_cache
+            .get_raw(&date)
+            .and_then(|raw| diary::parse_checked(&raw).ok());
+        // Always replace the previous day's lessons, even when only local events exist.
+        let mut update = self.build_diary_update(&date, cached.unwrap_or_default());
         update.loading = Some(true);
+        update.error = Some(String::new());
+        update.stale = Some(String::new());
 
         let session = self.session.clone()?;
+        let cache_gen = self.next_cache_generation();
         Some(DiaryAction::Fetch {
             update,
             fetch: DiaryFetch {
                 request: diary::request(&session, &date),
                 date,
                 gen,
+                session_epoch: self.session_epoch,
+                cache_gen,
             },
         })
     }
@@ -481,15 +566,42 @@ impl Core {
         Some(self.build_diary_update(&date, lessons))
     }
 
-    pub fn complete_diary(&mut self, fetch: &DiaryFetch, result: HttpResult) -> Option<DiaryUpdate> {
+    pub fn complete_diary(
+        &mut self,
+        fetch: &DiaryFetch,
+        result: HttpResult,
+    ) -> Option<DiaryUpdate> {
+        if self.session.is_none() || fetch.session_epoch != self.session_epoch {
+            return None;
+        }
         let latest = self.diary_gen == fetch.gen;
         let raw = crate::api::post_raw(result);
         match raw {
             Ok(raw) => match diary::parse_checked(&raw) {
                 Ok(lessons) => {
-                    self.diary_cache.put_mem(&fetch.date, &raw);
-                    self.diary_cache
-                        .persist(self.store.as_ref(), &self.storage_path, self.cache_format);
+                    // A background scan can share this date. Order cache writes by
+                    // completed responses without suppressing the visible request.
+                    let lessons = if self
+                        .diary_versions
+                        .get(&fetch.date)
+                        .is_none_or(|&v| fetch.cache_gen >= v)
+                    {
+                        self.diary_versions
+                            .insert(fetch.date.clone(), fetch.cache_gen);
+                        self.diary_cache.put_mem(&fetch.date, &raw);
+                        self.diary_cache.persist(
+                            self.store.as_ref(),
+                            &self.storage_path,
+                            self.cache_format,
+                        );
+                        lessons
+                    } else {
+                        self.diary_cache
+                            .get_raw(&fetch.date)
+                            .and_then(|raw| diary::parse_checked(&raw).ok())
+                            .unwrap_or(lessons)
+                    };
+                    self.diary_cache.mark_fetched(&fetch.date);
                     if latest {
                         let update = self.build_diary_update(&fetch.date, lessons);
                         Some(DiaryUpdate {
@@ -520,11 +632,7 @@ impl Core {
         }
     }
 
-    fn build_diary_update(
-        &mut self,
-        date: &str,
-        lessons: Vec<DiaryLessonData>,
-    ) -> DiaryUpdate {
+    fn build_diary_update(&mut self, date: &str, lessons: Vec<DiaryLessonData>) -> DiaryUpdate {
         // Свои события → в «уроки» этого дня.
         let event_items: Vec<LessonView> = self
             .events
@@ -572,10 +680,10 @@ impl Core {
                 let hw_key = if l.homework.is_empty() {
                     String::new()
                 } else {
-                    format!("{}|{}|{}", date, l.number, l.subject)
+                    self.scoped_lesson_key(date, l.number, &l.subject)
                 };
                 let hw_done = self.homework.is_done(&hw_key);
-                let note_key = NotesStore::key(date, l.number, &l.subject);
+                let note_key = self.scoped_lesson_key(date, l.number, &l.subject);
                 let note = self.notes.get(&note_key);
                 LessonView {
                     number: l.number,
@@ -603,8 +711,16 @@ impl Core {
 
         items.extend(event_items);
         items.sort_by(|a, b| {
-            let ka = if a.start.trim().is_empty() { "99:99" } else { a.start.trim() };
-            let kb = if b.start.trim().is_empty() { "99:99" } else { b.start.trim() };
+            let ka = if a.start.trim().is_empty() {
+                "99:99"
+            } else {
+                a.start.trim()
+            };
+            let kb = if b.start.trim().is_empty() {
+                "99:99"
+            } else {
+                b.start.trim()
+            };
             ka.cmp(kb).then(a.number.cmp(&b.number))
         });
 
@@ -629,8 +745,14 @@ impl Core {
 
     pub fn add_event_current(&mut self, name: &str, start: &str, end: &str) -> Option<DiaryUpdate> {
         let date = self.current_date.clone().unwrap_or_else(diary::today);
-        self.events
-            .add(self.store.as_ref(), &self.storage_path, &date, name, start, end);
+        self.events.add(
+            self.store.as_ref(),
+            &self.storage_path,
+            &date,
+            name,
+            start,
+            end,
+        );
         self.reapply_current_day()
     }
 
@@ -642,11 +764,17 @@ impl Core {
     }
 
     pub fn toggle_homework(&mut self, key: &str, done: bool) {
+        if !self.owns_lesson_key(key) {
+            return;
+        }
         self.homework
             .set_done(self.store.as_ref(), &self.storage_path, key, done);
     }
 
     pub fn save_note(&mut self, key: &str, text: &str) {
+        if !self.owns_lesson_key(key) {
+            return;
+        }
         self.notes
             .set(self.store.as_ref(), &self.storage_path, key, text);
     }
@@ -656,12 +784,8 @@ impl Core {
     }
 
     pub fn set_subject_hidden(&mut self, subject: &str, hidden: bool) -> SubjectFilterUpdate {
-        self.subjects.set_hidden(
-            self.store.as_ref(),
-            &self.storage_path,
-            subject,
-            hidden,
-        );
+        self.subjects
+            .set_hidden(self.store.as_ref(), &self.storage_path, subject, hidden);
         SubjectFilterUpdate {
             toggles: self.subjects.toggles(),
             diary: self.reapply_current_day(),
@@ -703,7 +827,16 @@ impl Core {
 
     pub fn complete_periods(&mut self, gen: u64, result: HttpResult) -> Option<MarksAction> {
         let latest = self.marks_gen == gen;
-        let raw = match crate::api::post_raw(result) {
+        if !latest || self.session.is_none() {
+            return None;
+        }
+        let raw = match crate::api::post_raw(result).and_then(|raw| {
+            let periods = marks::parse_periods_checked(&raw)?;
+            if periods.is_empty() {
+                return Err(FetchError::BadData);
+            }
+            Ok(raw)
+        }) {
             Ok(raw) => {
                 self.persist_periods(&raw);
                 raw
@@ -767,9 +900,9 @@ impl Core {
         if self.demo {
             return Some(MarksAction::Render(MarksUpdate {
                 selected: Some(idx as i32),
-                subjects: Some(marks::subject_views(
-                    marks::demo_subject_marks_for_period(idx),
-                )),
+                subjects: Some(marks::subject_views(marks::demo_subject_marks_for_period(
+                    idx,
+                ))),
                 loading: Some(false),
                 error: Some(String::new()),
                 ..Default::default()
@@ -804,13 +937,20 @@ impl Core {
             }
         }
 
-        let cached = self.cache_get(&range);
+        let cached = self
+            .cache_get(&range)
+            .filter(|raw| marks::parse_marks_checked(raw).is_ok());
         let mut update = base;
         if let Some(raw) = &cached {
             update.subjects = Some(marks::subject_views(marks::parse_marks(raw)));
             update.error = Some(String::new());
         }
         update.loading = Some(true);
+        if cached.is_none() {
+            update.subjects = Some(Vec::new());
+            update.error = Some(String::new());
+        }
+        let cache_gen = self.next_cache_generation();
 
         MarksAction::FetchMarks {
             update,
@@ -819,18 +959,41 @@ impl Core {
                 range,
                 gen,
                 had_cache: cached.is_some(),
+                session_epoch: self.session_epoch,
+                cache_gen,
             },
         }
     }
 
-    pub fn complete_marks(&mut self, fetch: &MarksFetch, result: HttpResult) -> Option<MarksUpdate> {
+    pub fn complete_marks(
+        &mut self,
+        fetch: &MarksFetch,
+        result: HttpResult,
+    ) -> Option<MarksUpdate> {
+        if self.session.is_none() || fetch.session_epoch != self.session_epoch {
+            return None;
+        }
         let latest = self.marks_gen == fetch.gen;
-        let raw = crate::api::post_raw(result);
+        let raw = crate::api::post_raw(result).and_then(|raw| {
+            marks::parse_marks_checked(&raw)?;
+            Ok(raw)
+        });
         match raw {
             Ok(raw) => {
-                self.cache_put(&fetch.range, &raw);
-                self.mark_fetched(&fetch.range);
-                self.persist_grades();
+                let raw = if self
+                    .grade_versions
+                    .get(&fetch.range)
+                    .is_none_or(|&v| fetch.cache_gen >= v)
+                {
+                    self.grade_versions
+                        .insert(fetch.range.clone(), fetch.cache_gen);
+                    self.cache_put(&fetch.range, &raw);
+                    self.mark_fetched(&fetch.range);
+                    self.persist_grades();
+                    raw
+                } else {
+                    self.cache_get(&fetch.range).unwrap_or(raw)
+                };
                 if latest {
                     Some(MarksUpdate {
                         subjects: Some(marks::subject_views(marks::parse_marks(&raw))),
@@ -902,16 +1065,30 @@ impl Core {
         });
 
         match next {
-            Some(index) => ChartStep::Fetch(ChartFetch {
-                request: quarter_request(&session, &periods[index]),
-                gen,
-                index,
-            }),
+            Some(index) => {
+                ChartStep::Fetch(self.chart_fetch(&session, &periods[index], gen, index))
+            }
             None => ChartStep::Done(marks::build_chart_view(&periods, &quarters)),
         }
     }
 
-    pub fn chart_supply(&mut self, gen: u64, index: usize, result: HttpResult) -> ChartStep {
+    fn chart_fetch(
+        &mut self,
+        session: &UserSession,
+        period: &Period,
+        gen: u64,
+        index: usize,
+    ) -> ChartFetch {
+        ChartFetch {
+            request: quarter_request(session, period),
+            gen,
+            index,
+            cache_gen: self.next_cache_generation(),
+        }
+    }
+
+    pub fn chart_supply(&mut self, fetch: &ChartFetch, result: HttpResult) -> ChartStep {
+        let (gen, index) = (fetch.gen, fetch.index);
         let Some(job) = self.chart_job.as_ref() else {
             return ChartStep::Ignored;
         };
@@ -921,7 +1098,10 @@ impl Core {
         let periods = job.periods.clone();
         let subject = job.subject.clone();
 
-        let raw = crate::api::post_raw(result);
+        let raw = crate::api::post_raw(result).and_then(|raw| {
+            marks::parse_marks_checked(&raw)?;
+            Ok(raw)
+        });
         match raw {
             Ok(raw) => {
                 let range = format!(
@@ -929,9 +1109,19 @@ impl Core {
                     marks::to_iso(&periods[index].from),
                     marks::to_iso(&periods[index].to)
                 );
-                self.cache_put(&range, &raw);
-                self.mark_fetched(&range);
-                self.persist_grades();
+                let raw = if self
+                    .grade_versions
+                    .get(&range)
+                    .is_none_or(|&v| fetch.cache_gen >= v)
+                {
+                    self.grade_versions.insert(range.clone(), fetch.cache_gen);
+                    self.cache_put(&range, &raw);
+                    self.mark_fetched(&range);
+                    self.persist_grades();
+                    raw
+                } else {
+                    self.cache_get(&range).unwrap_or(raw)
+                };
                 if let Some(job) = self.chart_job.as_mut() {
                     job.quarters[index] = marks_for_subject(&raw, &subject);
                 }
@@ -954,11 +1144,7 @@ impl Core {
             if i == index || !job.quarters[i].is_empty() {
                 continue;
             }
-            let range = format!(
-                "{}..{}",
-                marks::to_iso(&p.from),
-                marks::to_iso(&p.to)
-            );
+            let range = format!("{}..{}", marks::to_iso(&p.from), marks::to_iso(&p.to));
             if self.cache_get(&range).is_none() && i > index {
                 next = Some(i);
                 break;
@@ -967,11 +1153,8 @@ impl Core {
 
         if let Some(next_index) = next {
             if let Some(session) = self.session.clone() {
-                return ChartStep::Fetch(ChartFetch {
-                    request: quarter_request(&session, &job.periods[next_index]),
-                    gen,
-                    index: next_index,
-                });
+                let period = job.periods[next_index].clone();
+                return ChartStep::Fetch(self.chart_fetch(&session, &period, gen, next_index));
             }
         }
 
@@ -983,6 +1166,7 @@ impl Core {
     //  Итоговые оценки
     // ========================================================
     pub fn init_finals(&mut self) -> Option<FinalsUpdate> {
+        self.session.as_ref()?;
         if self.demo {
             return Some(FinalsUpdate {
                 subjects: Some(finals::finals_views(finals::demo_finals())),
@@ -991,12 +1175,14 @@ impl Core {
             });
         }
         if self.finals_raw.is_none() {
-            if let Some(raw) = self
-                .store
-                .load(&self.storage_path, FILE_FINALS_CACHE, CONTEXT_FINALS)
+            if let Some(raw) =
+                self.store
+                    .load(&self.storage_path, FILE_FINALS_CACHE, CONTEXT_FINALS)
             {
                 log::info!("Итоговые: кеш загружен с диска");
-                self.finals_raw = Some(raw);
+                if finals::parse_finals_checked(&raw).is_ok() {
+                    self.finals_raw = Some(raw);
+                }
             }
         }
         self.finals_raw.as_ref().map(|raw| FinalsUpdate {
@@ -1030,7 +1216,10 @@ impl Core {
         let session = self.session.clone()?;
 
         let cached = self.finals_raw.clone();
-        let mut update = FinalsUpdate::default();
+        let mut update = FinalsUpdate {
+            subjects: Some(Vec::new()),
+            ..Default::default()
+        };
         if let Some(raw) = &cached {
             update.subjects = Some(finals::finals_views(finals::parse_finals(raw)));
         }
@@ -1051,20 +1240,31 @@ impl Core {
                 request: finals::request(&session),
                 gen: self.finals_gen,
                 had_cache: cached.is_some(),
+                session_epoch: self.session_epoch,
             },
         })
     }
 
-    pub fn complete_finals(&mut self, fetch: &FinalsFetch, result: HttpResult) -> Option<FinalsUpdate> {
+    pub fn complete_finals(
+        &mut self,
+        fetch: &FinalsFetch,
+        result: HttpResult,
+    ) -> Option<FinalsUpdate> {
         let latest = self.finals_gen == fetch.gen;
-        let raw = crate::api::post_raw(result);
+        if !latest || fetch.session_epoch != self.session_epoch || self.session.is_none() {
+            return None;
+        }
+        let raw = crate::api::post_raw(result).and_then(|raw| {
+            finals::parse_finals_checked(&raw)?;
+            Ok(raw)
+        });
         match raw {
             Ok(raw) => {
                 self.finals_raw = Some(raw.clone());
                 self.finals_fetched = true;
-                if let Err(e) = self
-                    .store
-                    .save(&self.storage_path, FILE_FINALS_CACHE, CONTEXT_FINALS, &raw)
+                if let Err(e) =
+                    self.store
+                        .save(&self.storage_path, FILE_FINALS_CACHE, CONTEXT_FINALS, &raw)
                 {
                     log::warn!("Не удалось сохранить кеш итоговых: {:?}", e);
                 }
@@ -1082,7 +1282,11 @@ impl Core {
                 if latest {
                     Some(FinalsUpdate {
                         loading: Some(false),
-                        error: if fetch.had_cache { None } else { Some(e.message()) },
+                        error: if fetch.had_cache {
+                            None
+                        } else {
+                            Some(e.message())
+                        },
                         ..Default::default()
                     })
                 } else {
@@ -1101,11 +1305,29 @@ impl Core {
         }
         let session = self.session.clone()?;
         let (from, to) = diary::recent_range();
-        Some(RecentAction::Fetch(marks::marks_request(&session, &from, &to)))
+        self.recent_gen = self.recent_gen.wrapping_add(1);
+        Some(RecentAction::Fetch(RecentFetch {
+            request: marks::marks_request(&session, &from, &to),
+            gen: self.recent_gen,
+            session_epoch: self.session_epoch,
+        }))
     }
 
-    pub fn complete_recent_grades(&mut self, result: HttpResult) -> Option<Vec<RecentGradeView>> {
-        let raw = match crate::api::post_raw(result) {
+    pub fn complete_recent_grades(
+        &mut self,
+        fetch: &RecentFetch,
+        result: HttpResult,
+    ) -> Option<Vec<RecentGradeView>> {
+        if fetch.session_epoch != self.session_epoch
+            || fetch.gen != self.recent_gen
+            || self.session.is_none()
+        {
+            return None;
+        }
+        let raw = match crate::api::post_raw(result).and_then(|raw| {
+            marks::parse_marks_checked(&raw)?;
+            Ok(raw)
+        }) {
             Ok(raw) => raw,
             Err(e) => {
                 log::info!("Лента недавних оценок не обновлена: {}", e.message());
@@ -1149,9 +1371,23 @@ impl Core {
             return RecentDiaryAction::Ignored;
         }
 
-        match crate::api::post_raw(result) {
+        match crate::api::post_raw(result).and_then(|raw| {
+            diary::parse_checked(&raw)?;
+            Ok(raw)
+        }) {
             Ok(raw) => {
-                self.diary_cache.put_mem_no_mark(&fetch.date, &raw);
+                let raw = if self
+                    .diary_versions
+                    .get(&fetch.date)
+                    .is_none_or(|&v| fetch.cache_gen >= v)
+                {
+                    self.diary_versions
+                        .insert(fetch.date.clone(), fetch.cache_gen);
+                    self.diary_cache.put_mem_no_mark(&fetch.date, &raw);
+                    raw
+                } else {
+                    self.diary_cache.get_raw(&fetch.date).unwrap_or(raw)
+                };
                 let grades: Vec<RecentGradeView> = diary::parse(&raw)
                     .into_iter()
                     .filter(|l| l.mark_value > 0)
@@ -1167,10 +1403,9 @@ impl Core {
                     job.offset += 1;
                 }
             }
-            Err(_) => {
-                if let Some(job) = self.recent_diary_job.as_mut() {
-                    job.offset += 1;
-                }
+            Err(e) => {
+                log::info!("Лента: обход остановлен: {}", e.message());
+                return self.finish_recent_diary();
             }
         }
         self.recent_diary_next()
@@ -1181,16 +1416,7 @@ impl Core {
             return RecentDiaryAction::Ignored;
         };
         if job.offset >= RECENT_DIARY_MAX_BACK || job.grades.len() >= RECENT_DIARY_WANT {
-            let job = self.recent_diary_job.take().unwrap();
-            self.diary_cache.persist(
-                self.store.as_ref(),
-                &self.storage_path,
-                self.cache_format,
-            );
-            let mut grades = job.grades;
-            grades.truncate(diary::RECENT_MAX_ITEMS);
-            log::info!("Лента недавних оценок (дни): собрано {}", grades.len());
-            return RecentDiaryAction::Done(grades);
+            return self.finish_recent_diary();
         }
 
         let (gen, offset) = (job.gen, job.offset);
@@ -1201,12 +1427,25 @@ impl Core {
         let day = chrono::Local::now().date_naive() - chrono::Duration::days(offset);
         let date = day.format("%Y-%m-%d").to_string();
         let label = diary::recent_label(day);
+        let cache_gen = self.next_cache_generation();
         RecentDiaryAction::Fetch(RecentDiaryFetch {
             request: diary::request(&session, &date),
             date,
             label,
             gen,
+            cache_gen,
         })
+    }
+
+    fn finish_recent_diary(&mut self) -> RecentDiaryAction {
+        let Some(job) = self.recent_diary_job.take() else {
+            return RecentDiaryAction::Ignored;
+        };
+        self.diary_cache
+            .persist(self.store.as_ref(), &self.storage_path, self.cache_format);
+        let mut grades = job.grades;
+        grades.truncate(diary::RECENT_MAX_ITEMS);
+        RecentDiaryAction::Done(grades)
     }
 
     // ========================================================
@@ -1260,6 +1499,7 @@ impl Core {
     fn load_periods_disk(&self) -> Option<String> {
         self.store
             .load(&self.storage_path, FILE_PERIODS, CONTEXT_PERIODS)
+            .filter(|raw| marks::parse_periods_checked(raw).is_ok_and(|p| !p.is_empty()))
     }
 
     fn cache_get(&self, range: &str) -> Option<String> {
@@ -1295,9 +1535,9 @@ impl Core {
                 return;
             }
         };
-        if let Err(e) = self
-            .store
-            .save(&self.storage_path, FILE_GRADES_CACHE, CONTEXT_GRADES, &json)
+        if let Err(e) =
+            self.store
+                .save(&self.storage_path, FILE_GRADES_CACHE, CONTEXT_GRADES, &json)
         {
             log::warn!("Не удалось сохранить кеш оценок: {:?}", e);
         }
@@ -1313,7 +1553,10 @@ impl Core {
         match serde_json::from_str::<Vec<(String, String)>>(&json) {
             Ok(map) => {
                 log::info!("Кеш оценок загружен с диска: {} диапазонов", map.len());
-                self.grades_cache = map;
+                self.grades_cache = map
+                    .into_iter()
+                    .filter(|(_, raw)| marks::parse_marks_checked(raw).is_ok())
+                    .collect();
             }
             Err(e) => log::warn!("Кеш оценок не разобрался: {:?}", e),
         }
@@ -1450,27 +1693,55 @@ mod tests {
         core.enter_demo();
         core.set_current_date("2026-02-02".into());
         let initial = core.refresh_diary(0).unwrap();
-        let DiaryAction::Render(initial) = initial else { panic!("demo must render without network") };
+        let DiaryAction::Render(initial) = initial else {
+            panic!("demo must render without network")
+        };
         let lessons = initial.view.unwrap().lessons;
         assert!(!lessons.is_empty());
         let subject = lessons[0].subject.clone();
         let key = lessons[0].note_key.clone();
         core.save_note(&key, "Не забыть тетрадь");
         let hidden = core.set_subject_hidden(&subject, true);
-        assert!(hidden.toggles.iter().any(|t| t.subject == subject && t.hidden));
+        assert!(hidden
+            .toggles
+            .iter()
+            .any(|t| t.subject == subject && t.hidden));
         let filtered = hidden.diary.unwrap().view.unwrap().lessons;
         assert!(filtered.iter().all(|l| l.subject != subject));
-        assert_eq!(filtered.len(), lessons.iter().filter(|l| l.subject != subject).count());
+        assert_eq!(
+            filtered.len(),
+            lessons.iter().filter(|l| l.subject != subject).count()
+        );
         let mut restored = Core::new("/data", Box::new(store.clone()), CacheFormat::Stamps);
         restored.enter_demo();
         restored.set_current_date("2026-02-02".into());
-        assert!(restored.subject_toggles().iter().any(|t| t.subject == subject && t.hidden));
-        let shown = restored.set_subject_hidden(&subject, false).diary.unwrap().view.unwrap().lessons;
+        assert!(restored
+            .subject_toggles()
+            .iter()
+            .any(|t| t.subject == subject && t.hidden));
+        let shown = restored
+            .set_subject_hidden(&subject, false)
+            .diary
+            .unwrap()
+            .view
+            .unwrap()
+            .lessons;
         assert_eq!(shown.len(), lessons.len());
-        assert_eq!(shown.iter().find(|l| l.note_key == key).unwrap().note, "Не забыть тетрадь");
+        assert_eq!(
+            shown.iter().find(|l| l.note_key == key).unwrap().note,
+            "Не забыть тетрадь"
+        );
         restored.save_note(&key, "  ");
         let cleared = restored.reapply_current_day().unwrap().view.unwrap();
-        assert_eq!(cleared.lessons.iter().find(|l| l.note_key == key).unwrap().note, "");
+        assert_eq!(
+            cleared
+                .lessons
+                .iter()
+                .find(|l| l.note_key == key)
+                .unwrap()
+                .note,
+            ""
+        );
     }
 
     #[test]
@@ -1529,7 +1800,10 @@ mod tests {
         let update = core.complete_marks(&fetch, ok(MARKS)).unwrap();
         assert_eq!(update.subjects.unwrap()[0].subject, "Алгебра");
 
-        assert!(matches!(core.select_period(0).unwrap(), MarksAction::Render(_)));
+        assert!(matches!(
+            core.select_period(0).unwrap(),
+            MarksAction::Render(_)
+        ));
     }
 
     #[test]
@@ -1567,8 +1841,14 @@ mod tests {
         core.apply_switched_session(demo_session()).unwrap();
 
         let files = store.files.lock().unwrap();
-        assert!(files.contains_key(FILE_SESSION), "сессия должна пережить переключение");
-        assert!(!files.contains_key(FILE_MARKS_CACHE), "кеши должны сброситься");
+        assert!(
+            files.contains_key(FILE_SESSION),
+            "сессия должна пережить переключение"
+        );
+        assert!(
+            !files.contains_key(FILE_MARKS_CACHE),
+            "кеши должны сброситься"
+        );
     }
 
     #[test]

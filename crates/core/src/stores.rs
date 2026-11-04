@@ -44,12 +44,15 @@ impl EventsStore {
         // Event IDs are opaque. Browser entropy also works on wasm, where
         // std::time::SystemTime::now() is unsupported and panics.
         let id = format!("{:032x}", rand::random::<u128>());
-        self.map.entry(date.to_string()).or_default().push(StoredEvent {
-            id,
-            name: name.trim().to_string(),
-            start: normalize_time(start),
-            end: normalize_time(end),
-        });
+        self.map
+            .entry(date.to_string())
+            .or_default()
+            .push(StoredEvent {
+                id,
+                name: name.trim().to_string(),
+                start: normalize_time(start),
+                end: normalize_time(end),
+            });
         self.persist(store, path);
     }
 
@@ -134,6 +137,23 @@ pub struct HomeworkStore {
 }
 
 impl HomeworkStore {
+    pub fn migrate_legacy(&mut self, store: &dyn SecureStore, path: &str, prefix: &str) {
+        let legacy: Vec<String> = self
+            .done
+            .iter()
+            .filter(|k| !k.starts_with("student:"))
+            .cloned()
+            .collect();
+        if legacy.is_empty() {
+            return;
+        }
+        for key in legacy {
+            self.done.remove(&key);
+            self.done.insert(format!("{prefix}{key}"));
+        }
+        self.persist(store, path);
+    }
+
     pub fn load(store: &dyn SecureStore, path: &str) -> Self {
         let done = store
             .load(path, FILE_HOMEWORK, CONTEXT_HOMEWORK)
@@ -178,6 +198,24 @@ pub struct NotesStore {
 }
 
 impl NotesStore {
+    pub fn migrate_legacy(&mut self, store: &dyn SecureStore, path: &str, prefix: &str) {
+        let legacy: Vec<String> = self
+            .map
+            .keys()
+            .filter(|k| !k.starts_with("student:"))
+            .cloned()
+            .collect();
+        if legacy.is_empty() {
+            return;
+        }
+        for key in legacy {
+            if let Some(text) = self.map.remove(&key) {
+                self.map.entry(format!("{prefix}{key}")).or_insert(text);
+            }
+        }
+        self.persist(store, path);
+    }
+
     pub fn load(store: &dyn SecureStore, path: &str) -> Self {
         let map = store
             .load(path, FILE_NOTES, CONTEXT_NOTES)
@@ -279,13 +317,7 @@ impl SubjectsStore {
         changed
     }
 
-    pub fn set_hidden(
-        &mut self,
-        store: &dyn SecureStore,
-        path: &str,
-        subject: &str,
-        hidden: bool,
-    ) {
+    pub fn set_hidden(&mut self, store: &dyn SecureStore, path: &str, subject: &str, hidden: bool) {
         let key = subject.trim().to_string();
         if key.is_empty() {
             return;
@@ -342,7 +374,10 @@ mod tests {
             self.data.lock().unwrap().get(f).cloned()
         }
         fn save(&self, _p: &str, f: &str, _c: &[u8], d: &str) -> Result<(), String> {
-            self.data.lock().unwrap().insert(f.to_string(), d.to_string());
+            self.data
+                .lock()
+                .unwrap()
+                .insert(f.to_string(), d.to_string());
             Ok(())
         }
         fn delete(&self, _p: &str, f: &str) {

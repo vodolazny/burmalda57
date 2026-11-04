@@ -8,7 +8,7 @@
 // перезаписывается. Пустой ответ unwrap / битый .dek — Broken, тогда создаётся
 // новый DEK (старые файлы уже не прочитать).
 
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -18,6 +18,7 @@ use burmalda57_core::{decrypt_blob, encrypt_blob, random_bytes, SecureStore};
 use crate::platform::Platform;
 
 const DEK_FILE: &str = ".dek";
+static KEY_FILE_LOCK: Mutex<()> = Mutex::new(());
 
 enum DekState {
     Ready([u8; 32]),
@@ -70,6 +71,8 @@ impl FileStore {
     }
 
     fn get_or_create_dek(&self) -> Result<[u8; 32], String> {
+        // UI and background polling use separate FileStore instances in one process.
+        let _key_lock = KEY_FILE_LOCK.lock().unwrap();
         match self.read_dek()? {
             DekState::Ready(dek) => return Ok(dek),
             DekState::Absent => {}
@@ -80,14 +83,12 @@ impl FileStore {
 
         let dek = random_bytes::<32>();
         let blob = self.platform.wrap_key(&dek)?;
+        if blob.is_empty() || self.platform.unwrap_key(&blob)?.as_slice() != dek.as_slice() {
+            return Err("Не удалось проверить сохранение ключа шифрования".into());
+        }
         fs::create_dir_all(&self.dir).map_err(|e| format!("Не удалось создать каталог: {e}"))?;
         let path = self.dek_path();
-        let mut file =
-            File::create(&path).map_err(|e| format!("Не удалось создать .dek: {e}"))?;
-        file.write_all(&blob)
-            .map_err(|e| format!("Не удалось записать .dek: {e}"))?;
-        drop(file);
-        restrict_permissions(&path);
+        atomic_write(&path, &blob)?;
         *self.dek.lock().unwrap() = Some(dek);
         Ok(dek)
     }
@@ -124,18 +125,44 @@ impl SecureStore for FileStore {
         let blob = encrypt_blob(&dek, context, data)?;
         fs::create_dir_all(&self.dir).map_err(|e| format!("Не удалось создать каталог: {e}"))?;
         let path = format!("{}/{}", self.dir, filename);
-        let mut file =
-            File::create(&path).map_err(|e| format!("Не удалось создать {filename}: {e}"))?;
-        file.write_all(&blob)
-            .map_err(|e| format!("Не удалось записать {filename}: {e}"))?;
-        drop(file);
-        restrict_permissions(&path);
-        Ok(())
+        atomic_write(&path, &blob)
     }
 
     fn delete(&self, _storage_path: &str, filename: &str) {
         let _ = fs::remove_file(format!("{}/{}", self.dir, filename));
     }
+}
+
+fn atomic_write(path: &str, bytes: &[u8]) -> Result<(), String> {
+    let temporary = format!(
+        "{path}.tmp-{:032x}",
+        u128::from_le_bytes(random_bytes::<16>())
+    );
+    let result = (|| {
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&temporary).map_err(|e| e.to_string())?;
+        file.write_all(bytes).map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        drop(file);
+        fs::rename(&temporary, path).map_err(|e| e.to_string())?;
+        restrict_permissions(path);
+        if let Some(parent) = Path::new(path).parent() {
+            if let Ok(directory) = File::open(parent) {
+                let _ = directory.sync_all();
+            }
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result.map_err(|e: String| format!("Не удалось сохранить файл: {e}"))
 }
 
 #[cfg(unix)]

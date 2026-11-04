@@ -1,6 +1,7 @@
 package ru.burmalda.journal
 
 import android.content.Context
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
@@ -18,6 +19,7 @@ object KeystoreCrypto {
     private const val TAG_BITS = 128
 
     // Теперь метод принимает контекст, чтобы проверить наличие StrongBox
+    @Synchronized
     private fun getOrCreateKey(context: Context? = null): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
@@ -38,9 +40,9 @@ object KeystoreCrypto {
             .setKeySize(256)
 
         // Проверяем StrongBox через переданный контекст безопасным способом
-        val hasStrongBox = context?.packageManager?.hasSystemFeature(
+        val hasStrongBox = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && (context?.packageManager?.hasSystemFeature(
             android.content.pm.PackageManager.FEATURE_STRONGBOX_KEYSTORE
-        ) ?: false
+        ) ?: false)
 
         if (hasStrongBox) {
             try {
@@ -51,7 +53,10 @@ object KeystoreCrypto {
             }
         }
 
-        kg.init(builder.setIsStrongBoxBacked(false).build())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            builder.setIsStrongBoxBacked(false)
+        }
+        kg.init(builder.build())
         return kg.generateKey()
     }
 
@@ -65,22 +70,19 @@ object KeystoreCrypto {
     }
 
     @JvmStatic
+    @Synchronized
     fun wrap(plain: ByteArray): ByteArray {
-        return try {
-            val c = Cipher.getInstance(TRANSFORM)
-            c.init(Cipher.ENCRYPT_MODE, getOrCreateKey(null))
-            val iv = c.iv
-            iv + c.doFinal(plain)
-        } catch (e: Throwable) {
-            android.util.Log.e("burmalda57", "wrap failed: ${e.message}")
-            ByteArray(0)
-        }
+        // Exceptions must cross JNI as errors: an empty result is not a saved key.
+        val c = Cipher.getInstance(TRANSFORM)
+        c.init(Cipher.ENCRYPT_MODE, getOrCreateKey(null))
+        return c.iv + c.doFinal(plain)
     }
 
     // Возвращает расшифрованный DEK. Пустой массив — сентинел «восстановление
     // невозможно» (blob повреждён / ключ Keystore необратимо инвалидирован):
     // Rust по нему пересоздаёт DEK.
     @JvmStatic
+    @Synchronized
     fun unwrap(blob: ByteArray): ByteArray {
         if (blob.size < IV_LEN + (TAG_BITS / 8)) return ByteArray(0)
         val iv = blob.copyOfRange(0, IV_LEN)
@@ -89,8 +91,11 @@ object KeystoreCrypto {
             val c = Cipher.getInstance(TRANSFORM)
             c.init(Cipher.DECRYPT_MODE, getOrCreateKey(null), GCMParameterSpec(TAG_BITS, iv))
             c.doFinal(ct)
-        } catch (e: Throwable) {
-            android.util.Log.e("burmalda57", "unwrap failed: ${e.message}")
+        } catch (_: AEADBadTagException) {
+            // A corrupt envelope cannot be recovered with this platform key.
+            ByteArray(0)
+        } catch (_: KeyPermanentlyInvalidatedException) {
+            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(ALIAS)
             ByteArray(0)
         }
     }

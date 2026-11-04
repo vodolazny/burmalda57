@@ -46,8 +46,14 @@ impl DayCache {
         };
         match serde_json::from_str::<DiskCacheCompat>(&json) {
             Ok(DiskCacheCompat::Legacy(map)) => {
-                log::info!("Кеш дней загружен с диска (старый формат): {} дней", map.len());
-                Self { days: map, ..Default::default() }
+                log::info!(
+                    "Кеш дней загружен с диска (старый формат): {} дней",
+                    map.len()
+                );
+                Self {
+                    days: map,
+                    ..Default::default()
+                }
             }
             Ok(DiskCacheCompat::Current(c)) => {
                 log::info!("Кеш дней загружен с диска: {} дней", c.days.len());
@@ -76,12 +82,16 @@ impl DayCache {
         self.fetched.contains(date)
     }
 
+    pub fn mark_fetched(&mut self, date: &str) {
+        self.fetched.insert(date.to_string());
+    }
+
     /// Свежий ответ из сети: в память + отметка времени + «загружен в сессии».
     pub fn put_mem(&mut self, date: &str, raw: &str) {
         self.days.insert(date.to_string(), raw.to_string());
         self.stamps
             .insert(date.to_string(), chrono::Local::now().timestamp());
-        self.fetched.insert(date.to_string());
+        self.mark_fetched(date);
     }
 
     /// Положить в память, не помечая день как загруженный в этой сессии.
@@ -154,7 +164,10 @@ mod tests {
             self.data.lock().unwrap().get(f).cloned()
         }
         fn save(&self, _p: &str, f: &str, _c: &[u8], d: &str) -> Result<(), String> {
-            self.data.lock().unwrap().insert(f.to_string(), d.to_string());
+            self.data
+                .lock()
+                .unwrap()
+                .insert(f.to_string(), d.to_string());
             Ok(())
         }
         fn delete(&self, _p: &str, f: &str) {
@@ -166,7 +179,12 @@ mod tests {
     fn reads_legacy_map_and_current_format() {
         let store = MemStore::default();
         store
-            .save("p", FILE_MARKS_CACHE, CONTEXT_MARKS_CACHE, r#"{"2026-01-01":"raw"}"#)
+            .save(
+                "p",
+                FILE_MARKS_CACHE,
+                CONTEXT_MARKS_CACHE,
+                r#"{"2026-01-01":"raw"}"#,
+            )
             .unwrap();
         let cache = DayCache::load(&store, "p");
         assert_eq!(cache.get_raw("2026-01-01").as_deref(), Some("raw"));
@@ -191,11 +209,17 @@ mod tests {
         let mut cache = DayCache::default();
         cache.put_mem("2026-01-01", "raw");
         cache.persist(&store, "p", CacheFormat::LegacyMap);
-        let legacy = store.load("p", FILE_MARKS_CACHE, CONTEXT_MARKS_CACHE).unwrap();
-        assert!(legacy.starts_with('{') && legacy.contains("2026-01-01") && !legacy.contains("stamps"));
+        let legacy = store
+            .load("p", FILE_MARKS_CACHE, CONTEXT_MARKS_CACHE)
+            .unwrap();
+        assert!(
+            legacy.starts_with('{') && legacy.contains("2026-01-01") && !legacy.contains("stamps")
+        );
 
         cache.persist(&store, "p", CacheFormat::Stamps);
-        let current = store.load("p", FILE_MARKS_CACHE, CONTEXT_MARKS_CACHE).unwrap();
+        let current = store
+            .load("p", FILE_MARKS_CACHE, CONTEXT_MARKS_CACHE)
+            .unwrap();
         assert!(current.contains("\"stamps\""));
     }
 }

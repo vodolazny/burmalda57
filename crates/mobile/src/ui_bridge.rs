@@ -3,7 +3,7 @@
 // event loop, наружу передаются только Send-данные.
 
 use burmalda57_core::model::{
-    ChildItemView, ChartView, DateView, DiaryView, LessonView, RecentGradeView, SessionView,
+    ChartView, ChildItemView, DateView, DiaryView, LessonView, RecentGradeView, SessionView,
     SubjectFinalsView, SubjectGradesView, SubjectToggleView,
 };
 use burmalda57_core::{DiaryUpdate, FinalsUpdate, MarksUpdate, UserSession};
@@ -11,21 +11,22 @@ use burmalda57_ui::{
     AppWindow, ChartDivider, ChartPoint, ChildItem, FinalMark, GradeMark, Lesson, RecentGrade,
     SubjectFinals, SubjectGrades, SubjectToggle,
 };
-use slint::{ModelRc, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::APP_WEAK;
+use std::sync::atomic::{AtomicU64, Ordering};
+static UI_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 fn post<F>(f: F)
 where
     F: FnOnce(&AppWindow) + Send + 'static,
 {
+    let generation = UI_GENERATION.load(Ordering::Acquire);
     let _ = slint::invoke_from_event_loop(move || {
-        if let Some(ui) = APP_WEAK
-            .lock()
-            .unwrap()
-            .as_ref()
-            .and_then(|w| w.upgrade())
-        {
+        if UI_GENERATION.load(Ordering::Acquire) != generation {
+            return;
+        }
+        if let Some(ui) = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade()) {
             f(&ui);
         }
     });
@@ -67,6 +68,8 @@ fn subjects_model(subjects: Vec<SubjectGradesView>) -> ModelRc<SubjectGrades> {
                 .into_iter()
                 .map(|m| GradeMark {
                     value: m.value,
+                    weight: m.weight,
+                    work: m.work.into(),
                     date: m.date.into(),
                 })
                 .collect();
@@ -117,13 +120,11 @@ fn recent_model(grades: Vec<RecentGradeView>) -> ModelRc<RecentGrade> {
 }
 
 pub(crate) fn apply_session(session: &UserSession) {
+    UI_GENERATION.fetch_add(1, Ordering::AcqRel);
     let view = SessionView::from(session);
-    let children: Vec<ChildItem> = view
-        .children
-        .into_iter()
-        .map(child_item)
-        .collect();
+    let children: Vec<ChildItem> = view.children.into_iter().map(child_item).collect();
     post(move |ui| {
+        clear_learning_views(ui);
         ui.set_full_name(view.full_name.into());
         ui.set_school_name(view.school_name.into());
         ui.set_school_class(view.school_class.into());
@@ -174,16 +175,6 @@ pub(crate) fn open_child_select(is_login: bool) {
     post(move |ui| {
         ui.set_child_select_is_login(is_login);
         ui.set_child_select_open(true);
-    });
-}
-
-/// «Назад» в выборе ребёнка: если это шаг входа, не закрываем — иначе
-/// пользователь останется без сессии и без диалога.
-pub(crate) fn close_child_select_if_not_login() {
-    post(|ui| {
-        if !ui.get_child_select_is_login() {
-            ui.set_child_select_open(false);
-        }
     });
 }
 
@@ -388,7 +379,10 @@ pub(crate) fn reload_avatar(path: Option<std::path::PathBuf>) {
 }
 
 pub(crate) fn reset_logged_out() {
+    UI_GENERATION.fetch_add(1, Ordering::AcqRel);
     post(|ui| {
+        clear_learning_views(ui);
+        ui.set_guid("—".into());
         ui.set_logged_in(false);
         ui.set_full_name("—".into());
         ui.set_school_name("—".into());
@@ -404,4 +398,54 @@ pub(crate) fn reset_logged_out() {
         ui.set_grade_periods(ModelRc::new(VecModel::<slint::SharedString>::default()));
         ui.set_has_avatar(false);
     });
+}
+
+fn clear_learning_views(ui: &AppWindow) {
+    ui.set_lessons(ModelRc::default());
+    ui.set_recent_grades(ModelRc::default());
+    ui.set_grade_subjects(ModelRc::default());
+    ui.set_grade_finals(ModelRc::default());
+    ui.set_grade_periods(ModelRc::default());
+    ui.set_subject_toggles(ModelRc::default());
+    ui.set_chart_points(ModelRc::default());
+    ui.set_chart_dividers(ModelRc::default());
+    ui.set_chart_line_path("".into());
+    ui.set_chart_has_data(false);
+    ui.set_chart_loading(false);
+    ui.set_grade_mode(0);
+    ui.set_grade_selected(0);
+    ui.set_loading(false);
+    ui.set_grades_loading(false);
+    ui.set_logging_in(false);
+    ui.set_net_error("".into());
+    ui.set_net_stale("".into());
+    ui.set_grades_error("".into());
+    ui.set_login_error("".into());
+    ui.set_child_select_open(false);
+    ui.set_child_select_is_login(false);
+    ui.set_cal_open(false);
+    ui.set_event_open(false);
+    ui.set_chart_open(false);
+    ui.set_sim_open(false);
+    ui.set_subjects_open(false);
+}
+
+pub(crate) fn wire_grade_math(ui: &AppWindow) {
+    ui.global::<burmalda57_ui::GradeMath>()
+        .on_project(|marks, n2, n3, n4, n5| {
+            let input: Vec<_> = marks.iter().map(|m| (m.value, m.weight)).collect();
+            let p = burmalda57_core::marks::project_grades(&input, [n2, n3, n4, n5]);
+            burmalda57_ui::GradeSimulation {
+                average: p.average as f32,
+                average_text: p.average_text.into(),
+                count: p.count,
+                final_mark: p.final_mark,
+                n2: p.counts[0],
+                n3: p.counts[1],
+                n4: p.counts[2],
+                n5: p.counts[3],
+                fives_needed: p.fives_needed,
+                weighted: p.weighted,
+            }
+        });
 }

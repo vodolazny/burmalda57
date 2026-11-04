@@ -177,7 +177,9 @@ struct InitSessionResponse {
 
 #[derive(Clone, Debug)]
 pub enum LoginAccount {
-    Student { guid: String },
+    Student {
+        guid: String,
+    },
     Parent {
         children: Vec<ChildInfo>,
         parent_name: String,
@@ -230,7 +232,11 @@ pub fn parse_login_http(resp: HttpResponse) -> Result<LoginResponse, LoginError>
 pub fn parse_init_http(resp: HttpResponse) -> Result<String, LoginError> {
     let body = String::from_utf8_lossy(&resp.body).to_string();
     let parsed: InitSessionResponse = serde_json::from_str(&body).map_err(|e| {
-        log::error!("initsession: не разобрать ответ (HTTP {}): {:?}", resp.status, e);
+        log::error!(
+            "initsession: не разобрать ответ (HTTP {}): {:?}",
+            resp.status,
+            e
+        );
         LoginError::ServerRejected(String::new())
     })?;
     if parsed.key.is_empty() {
@@ -268,7 +274,9 @@ pub fn account_from(resp: &LoginResponse) -> Result<LoginAccount, LoginError> {
     if guid.is_empty() {
         return Err(LoginError::BadData);
     }
-    Ok(LoginAccount::Student { guid: guid.to_string() })
+    Ok(LoginAccount::Student {
+        guid: guid.to_string(),
+    })
 }
 
 pub fn is_parent_account(resp: &LoginResponse) -> bool {
@@ -362,11 +370,7 @@ pub fn extract_children(resp: &LoginResponse) -> Vec<ChildInfo> {
     children
 }
 
-pub fn build_student_session(
-    sid: &str,
-    apikey: &str,
-    resp: &LoginResponse,
-) -> Option<UserSession> {
+pub fn build_student_session(sid: &str, apikey: &str, resp: &LoginResponse) -> Option<UserSession> {
     let data = resp.data.as_ref()?;
     let entry = data.schools.iter().find(|s| s.participant.is_some())?;
     let p = entry.participant.as_ref()?;
@@ -379,7 +383,7 @@ pub fn build_student_session(
         .unwrap_or_default();
     Some(UserSession {
         sid: sid.to_string(),
-        user_guid: p.sys_guid.clone(),
+        user_guid: p.sys_guid.trim().to_string(),
         full_name,
         school_name: school,
         school_class,
@@ -449,12 +453,13 @@ mod tests {
 
     #[test]
     fn parses_student() {
-        let r = resp(STUDENT);
+        let r = resp(&STUDENT.replace("student-guid", " student-guid "));
         match account_from(&r).unwrap() {
             LoginAccount::Student { guid } => assert_eq!(guid, "student-guid"),
             _ => panic!("ожидался ученик"),
         }
         let s = build_student_session("sid", "key", &r).unwrap();
+        assert_eq!(s.user_guid, "student-guid");
         assert_eq!(s.full_name, "Петров Иван Сергеевич");
         assert_eq!(s.school_name, "Школа №1");
         assert_eq!(s.school_class, "9А");
@@ -465,7 +470,10 @@ mod tests {
     fn parses_parent_and_children() {
         let r = resp(PARENT);
         match account_from(&r).unwrap() {
-            LoginAccount::Parent { children, parent_name } => {
+            LoginAccount::Parent {
+                children,
+                parent_name,
+            } => {
                 assert_eq!(parent_name, "Петрова Анна Игоревна");
                 assert_eq!(children.len(), 2);
                 assert_eq!(children[0].school_class, "9А");
@@ -480,7 +488,8 @@ mod tests {
 
     #[test]
     fn rejects_unsuccessful_and_empty_data() {
-        let r: LoginResponse = serde_json::from_str(r#"{"success":false,"message":"bad"}"#).unwrap();
+        let r: LoginResponse =
+            serde_json::from_str(r#"{"success":false,"message":"bad"}"#).unwrap();
         assert_eq!(
             account_from(&r).unwrap_err(),
             LoginError::ServerRejected("bad".into())
@@ -491,11 +500,26 @@ mod tests {
 
     #[test]
     fn parses_init_key() {
-        let ok = HttpResponse { status: 200, body: br#"{"key":"abc"}"#.to_vec() };
+        let ok = HttpResponse {
+            status: 200,
+            body: br#"{"key":"abc"}"#.to_vec(),
+        };
         assert_eq!(parse_init_http(ok).unwrap(), "abc");
-        let empty = HttpResponse { status: 200, body: br#"{"status":"no","key":""}"#.to_vec() };
-        assert!(matches!(parse_init_http(empty), Err(LoginError::ServerRejected(_))));
-        let garbage = HttpResponse { status: 200, body: b"oops".to_vec() };
-        assert!(matches!(parse_init_http(garbage), Err(LoginError::ServerRejected(_))));
+        let empty = HttpResponse {
+            status: 200,
+            body: br#"{"status":"no","key":""}"#.to_vec(),
+        };
+        assert!(matches!(
+            parse_init_http(empty),
+            Err(LoginError::ServerRejected(_))
+        ));
+        let garbage = HttpResponse {
+            status: 200,
+            body: b"oops".to_vec(),
+        };
+        assert!(matches!(
+            parse_init_http(garbage),
+            Err(LoginError::ServerRejected(_))
+        ));
     }
 }

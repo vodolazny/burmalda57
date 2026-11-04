@@ -1,8 +1,8 @@
 // HTTP-адаптер браузера: исполняет core `ApiRequest` через fetch.
 //
 // CORS: сервер дневника должен разрешать запросы, либо страница открывается
-// как `...?proxy=https://my-proxy.example/` — тогда запросы к mp2.obr57.ru
-// идут на `<proxy><путь>`.
+// как `...?proxy=/api` — тогда запросы к mp2.obr57.ru идут через прокси
+// на том же origin. Внешний адрес из URL не получает сохранённую сессию.
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -13,8 +13,8 @@ use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{window, AbortController, Headers, RequestInit};
 use web_sys::Response as WebResponse;
+use web_sys::{window, AbortController, Headers, RequestInit};
 
 pub(crate) struct WebHttp;
 
@@ -51,30 +51,45 @@ impl WebHttp {
     }
 }
 
-fn api_origin() -> &'static String {
-    static ORIGIN: OnceLock<String> = OnceLock::new();
+fn api_origin() -> &'static Result<String, String> {
+    static ORIGIN: OnceLock<Result<String, String>> = OnceLock::new();
     ORIGIN.get_or_init(|| {
         if let Some(loc) = window().map(|w| w.location()) {
             if let Ok(search) = loc.search() {
                 if let Ok(params) = web_sys::UrlSearchParams::new_with_str(&search) {
                     if let Some(p) = params.get("proxy") {
-                        let p = p.trim_end_matches('/').to_string();
+                        let p = p.trim();
                         if !p.is_empty() {
-                            log::info!("Используется прокси: {}", p);
-                            return p;
+                            let base = loc.href().map_err(|_| "Не удалось определить адрес сайта".to_string())?;
+                            let proxy = web_sys::Url::new_with_base(p, &base)
+                                .map_err(|_| "Некорректный адрес прокси".to_string())?;
+                            let origin = loc.origin().map_err(|_| "Не удалось определить адрес сайта".to_string())?;
+                            if proxy.origin() != origin || !proxy.username().is_empty()
+                                || !proxy.password().is_empty() || !proxy.search().is_empty()
+                                || !proxy.hash().is_empty() {
+                                return Err("Прокси должен находиться на этом же сайте. Используйте, например, ?proxy=/api".into());
+                            }
+                            return Ok(proxy.href().trim_end_matches('/').to_string());
                         }
                     }
                 }
             }
         }
-        API_BASE.to_string()
+        Ok(API_BASE.to_string())
     })
 }
 
-fn api_url(path: &str) -> String {
+pub(crate) fn configuration_error() -> Option<&'static str> {
+    api_origin().as_ref().err().map(String::as_str)
+}
+
+fn api_url(path: &str) -> Result<String, TransportError> {
     match path.strip_prefix(API_BASE) {
-        Some(rest) => format!("{}{}", api_origin(), rest),
-        None => path.to_string(),
+        Some(rest) => api_origin()
+            .as_ref()
+            .map(|origin| format!("{origin}{rest}"))
+            .map_err(|_| TransportError::Offline),
+        None => Ok(path.to_string()),
     }
 }
 
@@ -83,11 +98,7 @@ fn is_abort(err: &JsValue) -> bool {
         && err.dyn_ref::<js_sys::Error>().unwrap().name() == "AbortError"
 }
 
-async fn fetch(
-    win: &web_sys::Window,
-    abort: &AbortController,
-    req: &ApiRequest,
-) -> HttpResult {
+async fn fetch(win: &web_sys::Window, abort: &AbortController, req: &ApiRequest) -> HttpResult {
     let headers = Headers::new().map_err(|_| TransportError::Offline)?;
     for (name, value) in &req.headers {
         // Host/User-Agent управляются браузером и запрещены в fetch.
@@ -101,12 +112,14 @@ async fn fetch(
     init.set_method(req.method);
     init.set_headers(&headers);
     init.set_signal(Some(&abort.signal()));
+    // A redirect must not forward a stored SID to another endpoint.
+    init.set_redirect(web_sys::RequestRedirect::Error);
     if let Some(body) = &req.body {
         let arr = Uint8Array::from(body.as_slice());
         init.set_body(&arr.into());
     }
 
-    let promise = win.fetch_with_str_and_init(&api_url(&req.url), &init);
+    let promise = win.fetch_with_str_and_init(&api_url(&req.url)?, &init);
     let resp_val = match JsFuture::from(promise).await {
         Ok(v) => v,
         Err(e) => {

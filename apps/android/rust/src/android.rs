@@ -106,8 +106,12 @@ where
 pub(crate) fn launch_login() -> Result<(), jni::errors::Error> {
     with_env(|env, activity| {
         let intent = env.new_object("android/content/Intent", "()V", &[])?;
-        let pkg: JObject = env.new_string("ru.burmalda.journal")?.into();
-        let cls: JObject = env.new_string("ru.burmalda.journal.EsiaAuthActivity")?.into();
+        let pkg = env
+            .call_method(activity, "getPackageName", "()Ljava/lang/String;", &[])?
+            .l()?;
+        let cls: JObject = env
+            .new_string("ru.burmalda.journal.EsiaAuthActivity")?
+            .into();
 
         env.call_method(
             &intent,

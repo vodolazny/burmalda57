@@ -83,10 +83,7 @@ class EsiaAuthActivity : Activity() {
                 }
 
                 val host = Uri.parse(error?.url ?: "").host ?: ""
-                val isTrustedDomain = host.endsWith("obr57.ru") ||
-                    host.endsWith("shkolove.ru") ||
-                    host.endsWith("gosuslugi.ru") ||
-                    host.endsWith("gu-st.ru")
+                val isTrustedDomain = AuthDomains.isTrustedAuthHost(host)
 
                 // Пропускаем ошибку недоверенного УЦ (SSL_UNTRUSTED) только для наших доменов
                 // и только если сертификат валиден по срокам и имени хоста
@@ -110,7 +107,7 @@ class EsiaAuthActivity : Activity() {
                 val url = request?.url?.toString() ?: return false
                 if (isDebuggable) Log.d(TAG, "Redirect/Load: $url")
 
-                if (url.contains("obr57.ru") || url.contains("shkolove.ru")) {
+                if (AuthDomains.isJournalHost(request?.url?.host)) {
                     checkCookiesForToken(url)
                 }
                 return false
@@ -135,7 +132,7 @@ class EsiaAuthActivity : Activity() {
     }
 
     private fun checkCookiesForToken(url: String?) {
-        if (url == null || tokenSent) return
+        if (url == null || tokenSent || !AuthDomains.isJournalHost(Uri.parse(url).host)) return
 
         val cookies = CookieManager.getInstance().getCookie(url) ?: return
 

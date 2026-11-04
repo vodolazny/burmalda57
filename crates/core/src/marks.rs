@@ -31,9 +31,7 @@ struct MarksPayload {
 
 #[derive(Deserialize, Default)]
 struct PeriodsResponse {
-    #[serde(default)]
     success: bool,
-    #[serde(default)]
     data: Vec<RawPeriod>,
 }
 
@@ -63,9 +61,7 @@ struct RawPeriod {
 
 #[derive(Deserialize, Default)]
 struct MarksResponse {
-    #[serde(default)]
     success: bool,
-    #[serde(default)]
     data: Vec<RawSubjectMarks>,
 }
 
@@ -86,7 +82,7 @@ struct RawMark {
     #[serde(alias = "VALUE", default)]
     value: i32,
     #[serde(alias = "WEIGHT", default)]
-    weight: i32,
+    weight: Option<i32>,
     #[serde(alias = "DATE", alias = "LESSON_DATE", alias = "MARK_DATE", default)]
     date: String,
     #[serde(alias = "NOTE", alias = "TOPIC", alias = "COMMENT", default)]
@@ -130,38 +126,48 @@ pub fn marks_request(session: &UserSession, from: &str, to: &str) -> ApiRequest 
 //  Парсинг
 // ============================================================
 pub fn parse_periods(raw: &str) -> Vec<Period> {
-    let resp: PeriodsResponse = match serde_json::from_str(raw) {
-        Ok(r) => r,
-        Err(e) => {
-            log::error!("allperiods: не разобрать: {:?}", e);
-            return Vec::new();
-        }
-    };
+    parse_periods_checked(raw).unwrap_or_default()
+}
+
+pub fn parse_periods_checked(raw: &str) -> Result<Vec<Period>, crate::api::FetchError> {
+    let resp: PeriodsResponse =
+        serde_json::from_str(raw).map_err(|_| crate::api::FetchError::BadData)?;
     if !resp.success {
-        log::warn!("allperiods: success=false");
+        return Err(crate::api::FetchError::BadData);
     }
-    resp.data
+    let periods: Vec<Period> = resp
+        .data
         .into_iter()
         .map(|p| Period {
             name: p.name,
             from: p.from,
             to: p.to,
         })
-        .collect()
+        .collect();
+    if periods
+        .iter()
+        .any(|p| match (parse_ddmmyyyy(&p.from), parse_ddmmyyyy(&p.to)) {
+            (Some(from), Some(to)) => from > to,
+            _ => true,
+        })
+    {
+        return Err(crate::api::FetchError::BadData);
+    }
+    Ok(periods)
 }
 
 pub fn parse_marks(raw: &str) -> Vec<SubjectMarks> {
-    let resp: MarksResponse = match serde_json::from_str(raw) {
-        Ok(r) => r,
-        Err(e) => {
-            log::error!("marksbyperiod: не разобрать: {:?}", e);
-            return Vec::new();
-        }
-    };
+    parse_marks_checked(raw).unwrap_or_default()
+}
+
+pub fn parse_marks_checked(raw: &str) -> Result<Vec<SubjectMarks>, crate::api::FetchError> {
+    let resp: MarksResponse =
+        serde_json::from_str(raw).map_err(|_| crate::api::FetchError::BadData)?;
     if !resp.success {
-        log::warn!("marksbyperiod: success=false");
+        return Err(crate::api::FetchError::BadData);
     }
-    resp.data
+    Ok(resp
+        .data
         .into_iter()
         .map(|s| {
             let marks: Vec<Mark> = s
@@ -169,7 +175,7 @@ pub fn parse_marks(raw: &str) -> Vec<SubjectMarks> {
                 .into_iter()
                 .map(|m| Mark {
                     value: m.value,
-                    weight: if m.weight > 0 { m.weight } else { 1 },
+                    weight: m.weight.unwrap_or(1).max(1),
                     short_name: m.short_name,
                     long_name: m.long_name,
                     date: m.date,
@@ -182,7 +188,7 @@ pub fn parse_marks(raw: &str) -> Vec<SubjectMarks> {
                 marks,
             }
         })
-        .collect()
+        .collect())
 }
 
 fn weighted_average(marks: &[Mark]) -> f64 {
@@ -190,7 +196,10 @@ fn weighted_average(marks: &[Mark]) -> f64 {
         .iter()
         .filter(|m| m.value > 0)
         .fold((0i64, 0i64), |(s, w), m| {
-            (s + (m.value as i64) * (m.weight as i64), w + m.weight as i64)
+            (
+                s + (m.value as i64) * (m.weight as i64),
+                w + m.weight as i64,
+            )
         });
     if wsum == 0 {
         0.0
@@ -203,7 +212,9 @@ fn weighted_average(marks: &[Mark]) -> f64 {
 //  Даты
 // ============================================================
 pub fn parse_ddmmyyyy(s: &str) -> Option<chrono::NaiveDate> {
-    chrono::NaiveDate::parse_from_str(s.trim(), "%d.%m.%Y").ok()
+    chrono::NaiveDate::parse_from_str(s.trim(), "%d.%m.%Y")
+        .or_else(|_| chrono::NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d"))
+        .ok()
 }
 
 /// "01.09.2025" → "2025-09-01" (marksbyperiod ждёт ISO).
@@ -218,7 +229,7 @@ pub fn short_date(ddmmyyyy: &str) -> String {
     ddmmyyyy.get(..5).unwrap_or(ddmmyyyy).to_string()
 }
 
-/// Текущая четверть по дате; если каникулы — последняя.
+/// Текущий период; на каникулах — ближайший завершённый, до начала года — первый.
 pub fn current_period_index(periods: &[Period]) -> usize {
     current_period_index_at(periods, chrono::Local::now().date_naive())
 }
@@ -231,7 +242,25 @@ pub fn current_period_index_at(periods: &[Period], today: chrono::NaiveDate) -> 
             }
         }
     }
-    periods.len().saturating_sub(1)
+    periods
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| {
+            parse_ddmmyyyy(&p.to)
+                .filter(|to| *to < today)
+                .map(|to| (i, to))
+        })
+        .max_by_key(|(_, to)| *to)
+        .map(|(i, _)| i)
+        .or_else(|| {
+            periods
+                .iter()
+                .enumerate()
+                .filter_map(|(i, p)| parse_ddmmyyyy(&p.from).map(|from| (i, from)))
+                .min_by_key(|(_, from)| *from)
+                .map(|(i, _)| i)
+        })
+        .unwrap_or(0)
 }
 
 /// Диапазон текущей четверти в ISO — для фоновых задач.
@@ -268,8 +297,10 @@ pub fn subject_views(subjects: Vec<SubjectMarks>) -> Vec<SubjectGradesView> {
             let marks: Vec<GradeMarkView> = s
                 .marks
                 .iter()
+                .filter(|m| m.value > 0)
                 .map(|m| GradeMarkView {
                     value: m.value,
+                    weight: m.weight,
                     date: short_date(&m.date),
                     work: if !m.long_name.trim().is_empty() {
                         m.long_name.trim().to_string()
@@ -300,6 +331,70 @@ pub fn subject_views(subjects: Vec<SubjectMarks>) -> Vec<SubjectGradesView> {
             }
         })
         .collect()
+}
+
+/// Virtual additions have weight one; removals use the last matching real marks.
+/// Calculate from exact marks, never from the rounded displayed average.
+pub fn project_grades(marks: &[(i32, i32)], changes: [i32; 4]) -> crate::model::GradeProjection {
+    let mut sum = 0i64;
+    let mut weight = 0i64;
+    let mut count = 0i64;
+    let mut counts = [0i32; 4];
+    let mut weighted = false;
+    for &(value, raw_weight) in marks.iter().filter(|(value, _)| *value > 0) {
+        let w = raw_weight.max(1) as i64;
+        sum += value as i64 * w;
+        weight += w;
+        count += 1;
+        weighted |= w != 1;
+        if (2..=5).contains(&value) {
+            counts[(value - 2) as usize] += 1;
+        }
+    }
+    for (index, delta) in changes.into_iter().enumerate() {
+        let value = index as i32 + 2;
+        if delta >= 0 {
+            sum += value as i64 * delta as i64;
+            weight += delta as i64;
+            count += delta as i64;
+        } else {
+            for &(_, w) in marks
+                .iter()
+                .rev()
+                .filter(|(v, _)| *v == value)
+                .take(delta.unsigned_abs() as usize)
+            {
+                let w = w.max(1) as i64;
+                sum -= value as i64 * w;
+                weight -= w;
+                count -= 1;
+            }
+        }
+    }
+    let average = if weight > 0 {
+        sum as f64 / weight as f64
+    } else {
+        0.0
+    };
+    let floor = average.floor();
+    crate::model::GradeProjection {
+        average,
+        average_text: format_avg(average),
+        count: count.clamp(0, i32::MAX as i64) as i32,
+        final_mark: if count == 0 {
+            0
+        } else {
+            (floor
+                + if average - floor >= 0.6 - 1e-9 {
+                    1.0
+                } else {
+                    0.0
+                }) as i32
+        },
+        counts,
+        fives_needed: (((23 * weight - 5 * sum).max(0) + 1) / 2).min(i32::MAX as i64) as i32,
+        weighted,
+    }
 }
 
 // ============================================================
@@ -365,10 +460,26 @@ pub fn chart_from_points(
 // ============================================================
 pub fn demo_periods() -> Vec<Period> {
     vec![
-        Period { name: "Первая четверть".into(), from: "01.09.2025".into(), to: "27.10.2025".into() },
-        Period { name: "Вторая четверть".into(), from: "06.11.2025".into(), to: "29.12.2025".into() },
-        Period { name: "Третья четверть".into(), from: "12.01.2026".into(), to: "22.03.2026".into() },
-        Period { name: "Четвертая четверть".into(), from: "01.04.2026".into(), to: "31.05.2026".into() },
+        Period {
+            name: "Первая четверть".into(),
+            from: "01.09.2025".into(),
+            to: "27.10.2025".into(),
+        },
+        Period {
+            name: "Вторая четверть".into(),
+            from: "06.11.2025".into(),
+            to: "29.12.2025".into(),
+        },
+        Period {
+            name: "Третья четверть".into(),
+            from: "12.01.2026".into(),
+            to: "22.03.2026".into(),
+        },
+        Period {
+            name: "Четвертая четверть".into(),
+            from: "01.04.2026".into(),
+            to: "31.05.2026".into(),
+        },
     ]
 }
 
@@ -404,28 +515,160 @@ fn demo_subject(subject: &str, marks: Vec<Mark>) -> SubjectMarks {
 pub fn demo_subject_marks_for_period(idx: usize) -> Vec<SubjectMarks> {
     match idx {
         0 => vec![
-            demo_subject("Алгебра", vec![demo_mark(5,"10.09.2025"), demo_mark(5,"22.09.2025"), demo_mark(4,"03.10.2025"), demo_mark(5,"15.10.2025"), demo_mark(5,"24.10.2025")]),
-            demo_subject("Русский язык", vec![demo_mark(4,"08.09.2025"), demo_mark(3,"19.09.2025"), demo_mark(5,"01.10.2025"), demo_mark(4,"12.10.2025"), demo_mark(4,"22.10.2025")]),
-            demo_subject("Физика", vec![demo_mark(4,"12.09.2025"), demo_mark(4,"26.09.2025"), demo_mark(3,"08.10.2025"), demo_mark(5,"17.10.2025"), demo_mark(4,"25.10.2025")]),
-            demo_subject("История", vec![demo_mark(5,"09.09.2025"), demo_mark(5,"23.09.2025"), demo_mark(4,"07.10.2025"), demo_mark(5,"18.10.2025")]),
-            demo_subject("Английский язык", vec![demo_mark(5,"11.09.2025"), demo_mark(4,"25.09.2025"), demo_mark(5,"09.10.2025"), demo_mark(5,"21.10.2025")]),
-            demo_subject("Информатика", vec![demo_mark(4,"15.09.2025"), demo_mark(5,"29.09.2025"), demo_mark(5,"13.10.2025"), demo_mark(5,"23.10.2025")]),
+            demo_subject(
+                "Алгебра",
+                vec![
+                    demo_mark(5, "10.09.2025"),
+                    demo_mark(5, "22.09.2025"),
+                    demo_mark(4, "03.10.2025"),
+                    demo_mark(5, "15.10.2025"),
+                    demo_mark(5, "24.10.2025"),
+                ],
+            ),
+            demo_subject(
+                "Русский язык",
+                vec![
+                    demo_mark(4, "08.09.2025"),
+                    demo_mark(3, "19.09.2025"),
+                    demo_mark(5, "01.10.2025"),
+                    demo_mark(4, "12.10.2025"),
+                    demo_mark(4, "22.10.2025"),
+                ],
+            ),
+            demo_subject(
+                "Физика",
+                vec![
+                    demo_mark(4, "12.09.2025"),
+                    demo_mark(4, "26.09.2025"),
+                    demo_mark(3, "08.10.2025"),
+                    demo_mark(5, "17.10.2025"),
+                    demo_mark(4, "25.10.2025"),
+                ],
+            ),
+            demo_subject(
+                "История",
+                vec![
+                    demo_mark(5, "09.09.2025"),
+                    demo_mark(5, "23.09.2025"),
+                    demo_mark(4, "07.10.2025"),
+                    demo_mark(5, "18.10.2025"),
+                ],
+            ),
+            demo_subject(
+                "Английский язык",
+                vec![
+                    demo_mark(5, "11.09.2025"),
+                    demo_mark(4, "25.09.2025"),
+                    demo_mark(5, "09.10.2025"),
+                    demo_mark(5, "21.10.2025"),
+                ],
+            ),
+            demo_subject(
+                "Информатика",
+                vec![
+                    demo_mark(4, "15.09.2025"),
+                    demo_mark(5, "29.09.2025"),
+                    demo_mark(5, "13.10.2025"),
+                    demo_mark(5, "23.10.2025"),
+                ],
+            ),
         ],
         1 => vec![
-            demo_subject("Алгебра", vec![demo_mark(4,"12.11.2025"), demo_mark(5,"24.11.2025"), demo_mark(3,"05.12.2025"), demo_mark(4,"16.12.2025"), demo_mark(5,"25.12.2025")]),
-            demo_subject("Русский язык", vec![demo_mark(4,"10.11.2025"), demo_mark(4,"21.11.2025"), demo_mark(5,"03.12.2025"), demo_mark(3,"15.12.2025"), demo_mark(4,"24.12.2025")]),
-            demo_subject("Физика", vec![demo_mark(3,"14.11.2025"), demo_mark(2,"25.11.2025"), demo_mark(4,"08.12.2025"), demo_mark(3,"18.12.2025"), demo_mark(4,"26.12.2025")]),
-            demo_subject("История", vec![demo_mark(5,"11.11.2025"), demo_mark(4,"26.11.2025"), demo_mark(5,"10.12.2025"), demo_mark(5,"23.12.2025")]),
-            demo_subject("Английский язык", vec![demo_mark(4,"13.11.2025"), demo_mark(4,"27.11.2025"), demo_mark(5,"11.12.2025"), demo_mark(3,"22.12.2025")]),
-            demo_subject("Информатика", vec![demo_mark(5,"17.11.2025"), demo_mark(3,"01.12.2025"), demo_mark(4,"15.12.2025"), demo_mark(5,"26.12.2025")]),
+            demo_subject(
+                "Алгебра",
+                vec![
+                    demo_mark(4, "12.11.2025"),
+                    demo_mark(5, "24.11.2025"),
+                    demo_mark(3, "05.12.2025"),
+                    demo_mark(4, "16.12.2025"),
+                    demo_mark(5, "25.12.2025"),
+                ],
+            ),
+            demo_subject(
+                "Русский язык",
+                vec![
+                    demo_mark(4, "10.11.2025"),
+                    demo_mark(4, "21.11.2025"),
+                    demo_mark(5, "03.12.2025"),
+                    demo_mark(3, "15.12.2025"),
+                    demo_mark(4, "24.12.2025"),
+                ],
+            ),
+            demo_subject(
+                "Физика",
+                vec![
+                    demo_mark(3, "14.11.2025"),
+                    demo_mark(2, "25.11.2025"),
+                    demo_mark(4, "08.12.2025"),
+                    demo_mark(3, "18.12.2025"),
+                    demo_mark(4, "26.12.2025"),
+                ],
+            ),
+            demo_subject(
+                "История",
+                vec![
+                    demo_mark(5, "11.11.2025"),
+                    demo_mark(4, "26.11.2025"),
+                    demo_mark(5, "10.12.2025"),
+                    demo_mark(5, "23.12.2025"),
+                ],
+            ),
+            demo_subject(
+                "Английский язык",
+                vec![
+                    demo_mark(4, "13.11.2025"),
+                    demo_mark(4, "27.11.2025"),
+                    demo_mark(5, "11.12.2025"),
+                    demo_mark(3, "22.12.2025"),
+                ],
+            ),
+            demo_subject(
+                "Информатика",
+                vec![
+                    demo_mark(5, "17.11.2025"),
+                    demo_mark(3, "01.12.2025"),
+                    demo_mark(4, "15.12.2025"),
+                    demo_mark(5, "26.12.2025"),
+                ],
+            ),
         ],
         2 => vec![
-            demo_subject("Алгебра", vec![demo_mark(5,"12.02.2026"), demo_mark(4,"18.02.2026"), demo_mark(5,"27.02.2026")]),
-            demo_subject("Русский язык", vec![demo_mark(4,"11.02.2026"), demo_mark(4,"20.02.2026"), demo_mark(5,"28.02.2026")]),
-            demo_subject("Физика", vec![demo_mark(3,"13.02.2026"), demo_mark(4,"21.02.2026"), demo_mark(4,"01.03.2026")]),
-            demo_subject("История", vec![demo_mark(5,"10.02.2026"), demo_mark(5,"19.02.2026")]),
-            demo_subject("Английский язык", vec![demo_mark(5,"12.02.2026"), demo_mark(4,"22.02.2026")]),
-            demo_subject("Информатика", vec![demo_mark(5,"12.02.2026"), demo_mark(2,"19.02.2026")]),
+            demo_subject(
+                "Алгебра",
+                vec![
+                    demo_mark(5, "12.02.2026"),
+                    demo_mark(4, "18.02.2026"),
+                    demo_mark(5, "27.02.2026"),
+                ],
+            ),
+            demo_subject(
+                "Русский язык",
+                vec![
+                    demo_mark(4, "11.02.2026"),
+                    demo_mark(4, "20.02.2026"),
+                    demo_mark(5, "28.02.2026"),
+                ],
+            ),
+            demo_subject(
+                "Физика",
+                vec![
+                    demo_mark(3, "13.02.2026"),
+                    demo_mark(4, "21.02.2026"),
+                    demo_mark(4, "01.03.2026"),
+                ],
+            ),
+            demo_subject(
+                "История",
+                vec![demo_mark(5, "10.02.2026"), demo_mark(5, "19.02.2026")],
+            ),
+            demo_subject(
+                "Английский язык",
+                vec![demo_mark(5, "12.02.2026"), demo_mark(4, "22.02.2026")],
+            ),
+            demo_subject(
+                "Информатика",
+                vec![demo_mark(5, "12.02.2026"), demo_mark(2, "19.02.2026")],
+            ),
         ],
         _ => Vec::new(),
     }
@@ -459,7 +702,15 @@ pub fn demo_chart(subject: &str) -> ChartView {
             (0..count)
                 .map(|i| {
                     let r = (seed * 37 + i * 43 + 19) % 100;
-                    if r < 35 { 5 } else if r < 70 { 4 } else if r < 88 { 3 } else { 2 }
+                    if r < 35 {
+                        5
+                    } else if r < 70 {
+                        4
+                    } else if r < 88 {
+                        3
+                    } else {
+                        2
+                    }
                 })
                 .collect()
         } else {
@@ -515,8 +766,11 @@ mod tests {
         let periods = demo_periods();
         let d = |s| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
         assert_eq!(current_period_index_at(&periods, d("2026-02-01")), 2);
-        // каникулы — последняя четверть
-        assert_eq!(current_period_index_at(&periods, d("2025-11-01")), 3);
+        // На осенних каникулах показываем завершённую первую четверть.
+        assert_eq!(current_period_index_at(&periods, d("2025-11-01")), 0);
+        assert_eq!(current_period_index_at(&periods, d("2026-01-05")), 1);
+        assert_eq!(current_period_index_at(&periods, d("2025-08-01")), 0);
+        assert_eq!(current_period_index_at(&periods, d("2026-08-01")), 3);
         assert_eq!(to_iso("01.09.2025"), "2025-09-01");
         assert_eq!(short_date("06.04.2026"), "06.04");
     }
@@ -524,8 +778,16 @@ mod tests {
     #[test]
     fn subject_view_filters_empty_and_counts() {
         let subjects = vec![
-            SubjectMarks { subject: "A".into(), average: 4.5, marks: vec![demo_mark(5,"01.02.2026"), demo_mark(4,"02.02.2026")] },
-            SubjectMarks { subject: "B".into(), average: 0.0, marks: vec![] },
+            SubjectMarks {
+                subject: "A".into(),
+                average: 4.5,
+                marks: vec![demo_mark(5, "01.02.2026"), demo_mark(4, "02.02.2026")],
+            },
+            SubjectMarks {
+                subject: "B".into(),
+                average: 0.0,
+                marks: vec![],
+            },
         ];
         let views = subject_views(subjects);
         assert_eq!(views.len(), 1);

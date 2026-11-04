@@ -55,6 +55,9 @@ jobs:
         with:
           workspaces: ". -> target"
 
+      - name: Проверки ядра и хранилища
+        run: cargo test --locked -p burmalda57-core
+
       - name: JDK 17
         uses: actions/setup-java@v4
         with:
@@ -139,12 +142,12 @@ jobs:
       - name: Сборка debug APK
         if: steps.variant.outputs.value == 'debug'
         working-directory: apps/android
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
 
       - name: Сборка release APK
         if: steps.variant.outputs.value == 'release'
         working-directory: apps/android
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+        run: ./gradlew :app:testDebugUnitTest :app:assembleRelease --no-daemon --stacktrace
 
       - name: Проверить пакет APK и подпись
         env:

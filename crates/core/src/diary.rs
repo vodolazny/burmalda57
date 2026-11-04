@@ -19,9 +19,7 @@ struct JournalPayload {
 
 #[derive(Deserialize)]
 struct DiaryResponse {
-    #[serde(default)]
     success: bool,
-    #[serde(default)]
     data: Vec<DiaryLesson>,
 }
 
@@ -112,7 +110,8 @@ pub fn request(session: &UserSession, date: &str) -> ApiRequest {
 
 fn clean_homework(s: &str) -> String {
     let norm = s.trim().to_lowercase();
-    if norm.is_empty() || norm == "нет домашнего задания" || norm == "не задано" {
+    if norm.is_empty() || norm == "нет домашнего задания" || norm == "не задано"
+    {
         String::new()
     } else {
         s.trim().to_string()
@@ -121,25 +120,20 @@ fn clean_homework(s: &str) -> String {
 
 /// Разбор свежего ответа: мусор отличаем от пустого дня.
 pub fn parse_checked(raw: &str) -> Result<Vec<DiaryLessonData>, crate::api::FetchError> {
-    if serde_json::from_str::<DiaryResponse>(raw).is_err() {
+    let response: DiaryResponse =
+        serde_json::from_str(raw).map_err(|_| crate::api::FetchError::BadData)?;
+    if !response.success {
         return Err(crate::api::FetchError::BadData);
     }
-    Ok(parse(raw))
+    Ok(build_lessons(response.data))
 }
 
 pub fn parse(raw: &str) -> Vec<DiaryLessonData> {
-    let resp: DiaryResponse = match serde_json::from_str(raw) {
-        Ok(r) => r,
-        Err(e) => {
-            log::error!("Не удалось распарсить diaryday: {:?}", e);
-            return Vec::new();
-        }
-    };
-    if !resp.success {
-        log::warn!("diaryday: success=false");
-    }
-    resp.data
-        .into_iter()
+    parse_checked(raw).unwrap_or_default()
+}
+
+fn build_lessons(data: Vec<DiaryLesson>) -> Vec<DiaryLessonData> {
+    data.into_iter()
         .map(|l| {
             let mark = l
                 .marks
@@ -178,9 +172,7 @@ pub fn parse(raw: &str) -> Vec<DiaryLessonData> {
             // HOMEWORK (старый веб-формат).
             let homework = l
                 .homework_previous
-                .and_then(|p| p.homework)
-                .map(|s| clean_homework(&s))
-                .filter(|s| !s.is_empty())
+                .map(|p| clean_homework(p.homework.as_deref().unwrap_or_default()))
                 .or_else(|| l.homework.map(|s| clean_homework(&s)))
                 .unwrap_or_default();
             let absence = l
@@ -223,7 +215,11 @@ pub fn today() -> String {
 
 pub fn shift_date(date: &str, delta: i64) -> String {
     chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
-        .map(|d| (d + chrono::Duration::days(delta)).format("%Y-%m-%d").to_string())
+        .map(|d| {
+            (d + chrono::Duration::days(delta))
+                .format("%Y-%m-%d")
+                .to_string()
+        })
         .unwrap_or_else(|_| date.to_string())
 }
 
@@ -343,8 +339,15 @@ pub fn demo_lessons(date: &str) -> Vec<DiaryLessonData> {
     if wd >= 5 {
         return Vec::new();
     }
-    let mk = |n, time: &str, subj: &str, room: &str, teacher: &str, hw: &str,
-              topic: &str, mark: &str, mv: i32| DiaryLessonData {
+    let mk = |n,
+              time: &str,
+              subj: &str,
+              room: &str,
+              teacher: &str,
+              hw: &str,
+              topic: &str,
+              mark: &str,
+              mv: i32| DiaryLessonData {
         number: n,
         time: time.into(),
         subject: subj.into(),
@@ -365,12 +368,72 @@ pub fn demo_lessons(date: &str) -> Vec<DiaryLessonData> {
         start: time.split(' ').next().unwrap_or("").into(),
     };
     vec![
-        mk(1, "08:30 – 09:15", "Алгебра", "210", "Смирнова А. И.", "§14, №312–315", "Квадратные уравнения", "5", 5),
-        mk(2, "09:25 – 10:10", "Русский язык", "118", "Кузнецова О. П.", "упр. 245", "Причастный оборот", "4", 4),
-        mk(3, "10:30 – 11:15", "Физика", "305", "Волков С. Н.", "§22, задачи 1–4", "Закон Ома", "", 0),
-        mk(4, "11:25 – 12:10", "История", "201", "Бурим А. А.", "п. 18, вопросы", "Смутное время", "4 5", 4),
-        mk(5, "12:30 – 13:15", "Физкультура", "спортзал", "Зайцев И. И.", "", "Баскетбол", "", 0),
-        mk(6, "13:25 – 14:10", "Информатика", "209", "Торвальдс Л.Б", "", "Программирование на языке Паскаль", "", 0),
+        mk(
+            1,
+            "08:30 – 09:15",
+            "Алгебра",
+            "210",
+            "Смирнова А. И.",
+            "§14, №312–315",
+            "Квадратные уравнения",
+            "5",
+            5,
+        ),
+        mk(
+            2,
+            "09:25 – 10:10",
+            "Русский язык",
+            "118",
+            "Кузнецова О. П.",
+            "упр. 245",
+            "Причастный оборот",
+            "4",
+            4,
+        ),
+        mk(
+            3,
+            "10:30 – 11:15",
+            "Физика",
+            "305",
+            "Волков С. Н.",
+            "§22, задачи 1–4",
+            "Закон Ома",
+            "",
+            0,
+        ),
+        mk(
+            4,
+            "11:25 – 12:10",
+            "История",
+            "201",
+            "Бурим А. А.",
+            "п. 18, вопросы",
+            "Смутное время",
+            "4 5",
+            4,
+        ),
+        mk(
+            5,
+            "12:30 – 13:15",
+            "Физкультура",
+            "спортзал",
+            "Зайцев И. И.",
+            "",
+            "Баскетбол",
+            "",
+            0,
+        ),
+        mk(
+            6,
+            "13:25 – 14:10",
+            "Информатика",
+            "209",
+            "Торвальдс Л.Б",
+            "",
+            "Программирование на языке Паскаль",
+            "",
+            0,
+        ),
     ]
 }
 

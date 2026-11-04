@@ -45,8 +45,7 @@ impl SecureStore for WebStore {
     ) -> Result<(), String> {
         let dek = (*DEK.lock().unwrap()).ok_or("хранилище ключей не инициализировано")?;
         let blob = encrypt_blob(&dek, context, data)?;
-        ls()
-            .map_err(|e| e.to_string())?
+        ls().map_err(|e| e.to_string())?
             .set_item(&file_key(filename), &STANDARD.encode(&blob))
             .map_err(|e| format!("{e:?}"))
     }
@@ -162,7 +161,10 @@ fn upgrade_handler() -> Closure<dyn Fn(web_sys::Event)> {
             .target()
             .and_then(|t| t.dyn_into::<web_sys::IdbOpenDbRequest>().ok())
         {
-            if let Ok(db) = req.result().and_then(|r| r.dyn_into::<web_sys::IdbDatabase>()) {
+            if let Ok(db) = req
+                .result()
+                .and_then(|r| r.dyn_into::<web_sys::IdbDatabase>())
+            {
                 let _ = db.create_object_store(IDB_STORE);
             }
         }
@@ -204,8 +206,8 @@ async fn open_keystore_db() -> Result<web_sys::IdbDatabase, JsValue> {
 async fn idb_get_kek() -> Result<Option<web_sys::CryptoKey>, JsValue> {
     let db = open_keystore_db().await?;
     let result = (async {
-        let tx = db
-            .transaction_with_str_and_mode(IDB_STORE, web_sys::IdbTransactionMode::Readonly)?;
+        let tx =
+            db.transaction_with_str_and_mode(IDB_STORE, web_sys::IdbTransactionMode::Readonly)?;
         let store = tx.object_store(IDB_STORE)?;
         let req = store.get(&JsValue::from_str(IDB_KEK))?;
         let val = idb_request(&req).await?;
@@ -223,8 +225,8 @@ async fn idb_get_kek() -> Result<Option<web_sys::CryptoKey>, JsValue> {
 async fn idb_put_kek(key: &web_sys::CryptoKey) -> Result<(), JsValue> {
     let db = open_keystore_db().await?;
     let result = (async {
-        let tx = db
-            .transaction_with_str_and_mode(IDB_STORE, web_sys::IdbTransactionMode::Readwrite)?;
+        let tx =
+            db.transaction_with_str_and_mode(IDB_STORE, web_sys::IdbTransactionMode::Readwrite)?;
         let store = tx.object_store(IDB_STORE)?;
         let req = store.put_with_key(&key.into(), &JsValue::from_str(IDB_KEK))?;
         idb_request(&req).await?;
@@ -322,11 +324,62 @@ async fn wrap_dek(
     Ok(())
 }
 
+fn has_encrypted_data() -> Result<bool, Box<dyn std::error::Error>> {
+    let storage = ls()?;
+    if storage.get_item(LS_WRAPPED_DEK).map_err(js_err)?.is_some() {
+        return Ok(true);
+    }
+    for i in 0..storage.length().map_err(js_err)? {
+        if storage
+            .key(i)
+            .map_err(js_err)?
+            .is_some_and(|key| key.starts_with(LS_FILE_PREFIX))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 // =========================================================================
 //  Инициализация при старте
 // =========================================================================
-/// KEK нет → создаём KEK и DEK; KEK есть → разворачиваем DEK в память.
+/// Serialize initialization across tabs, including asynchronous WebCrypto calls.
 pub(crate) async fn init_keystore() -> Result<(), Box<dyn std::error::Error>> {
+    let win = window().ok_or("нет window")?;
+    let navigator =
+        js_sys::Reflect::get(win.as_ref(), &JsValue::from_str("navigator")).map_err(js_err)?;
+    let locks = js_sys::Reflect::get(&navigator, &JsValue::from_str("locks")).map_err(js_err)?;
+    if locks.is_null() || locks.is_undefined() {
+        return Err("Для защищённого хранилища требуется браузер с Web Locks и HTTPS".into());
+    }
+    let request: js_sys::Function = js_sys::Reflect::get(&locks, &JsValue::from_str("request"))
+        .map_err(js_err)?
+        .dyn_into()
+        .map_err(js_err)?;
+    let callback = Closure::<dyn FnMut() -> js_sys::Promise>::once(|| {
+        wasm_bindgen_futures::future_to_promise(async {
+            init_keystore_locked()
+                .await
+                .map_err(|e| JsValue::from_str(&e.to_string()))?;
+            Ok(JsValue::UNDEFINED)
+        })
+    });
+    let promise: js_sys::Promise = request
+        .call2(
+            &locks,
+            &JsValue::from_str("burmalda57-keystore"),
+            callback.as_ref(),
+        )
+        .map_err(js_err)?
+        .dyn_into()
+        .map_err(js_err)?;
+    JsFuture::from(promise).await.map_err(js_err)?;
+    drop(callback);
+    Ok(())
+}
+
+async fn init_keystore_locked() -> Result<(), Box<dyn std::error::Error>> {
     let subtle = subtle()?;
 
     if let Some(kek) = idb_get_kek().await.map_err(js_err)? {
@@ -336,19 +389,25 @@ pub(crate) async fn init_keystore() -> Result<(), Box<dyn std::error::Error>> {
                 log::info!("Хранилище сессии разблокировано (DEK восстановлен)");
                 return Ok(());
             }
-            // Старый/повреждённый конверт восстановить нельзя — данные под ним
-            // всё равно не прочитать, поэтому пересоздаём DEK под тем же KEK.
             Err(e) => {
-                log::warn!("Не удалось развернуть DEK ({e}); создаём новый");
+                // Recover an interrupted FIRST initialization only. Never replace
+                // an existing envelope or a key protecting encrypted user files.
+                if has_encrypted_data()? {
+                    return Err(e);
+                }
                 let dek = random_bytes::<32>();
                 wrap_dek(&subtle, &kek, &dek).await?;
                 *DEK.lock().unwrap() = Some(dek);
-                log::info!("Создано новое хранилище сессии (DEK)");
                 return Ok(());
             }
         }
     }
 
+    if has_encrypted_data()? {
+        return Err(
+            "Ключ IndexedDB недоступен; существующие данные сохранены без изменений".into(),
+        );
+    }
     // Первый запуск: KEK (неизвлекаемый) + DEK.
     let algo = aes_gcm_algo()?;
     let kek_val = JsFuture::from(

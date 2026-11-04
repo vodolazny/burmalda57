@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::{ApiRequest, API_BASE};
 use crate::crypto::ahh_encrypt;
-use crate::model::{FinalCellData, FinalMarkView, SubjectFinalsData, SubjectFinalsView, UserSession};
+use crate::model::{
+    FinalCellData, FinalMarkView, SubjectFinalsData, SubjectFinalsView, UserSession,
+};
 
 const TIMEOUT_SECS: u64 = 8;
 
@@ -13,29 +15,50 @@ const PERIOD_ORDER: &[(&str, &[&str])] = &[
     (
         "1",
         &[
-            "первая четверть", "1 четверть", "i четверть",
-            "первое полугодие", "1 полугодие", "i полугодие",
-            "первый триместр", "1 триместр", "i триместр",
+            "первая четверть",
+            "1 четверть",
+            "i четверть",
+            "первое полугодие",
+            "1 полугодие",
+            "i полугодие",
+            "первый триместр",
+            "1 триместр",
+            "i триместр",
         ],
     ),
     (
         "2",
         &[
-            "вторая четверть", "2 четверть", "ii четверть",
-            "второе полугодие", "2 полугодие", "ii полугодие",
-            "второй триместр", "2 триместр", "ii триместр",
+            "вторая четверть",
+            "2 четверть",
+            "ii четверть",
+            "второе полугодие",
+            "2 полугодие",
+            "ii полугодие",
+            "второй триместр",
+            "2 триместр",
+            "ii триместр",
         ],
     ),
     (
         "3",
         &[
-            "третья четверть", "3 четверть", "iii четверть",
-            "третий триместр", "3 триместр", "iii триместр",
+            "третья четверть",
+            "3 четверть",
+            "iii четверть",
+            "третий триместр",
+            "3 триместр",
+            "iii триместр",
         ],
     ),
     (
         "4",
-        &["четвертая четверть", "четвёртая четверть", "4 четверть", "iv четверть"],
+        &[
+            "четвертая четверть",
+            "четвёртая четверть",
+            "4 четверть",
+            "iv четверть",
+        ],
     ),
     ("Год", &["годовая", "год", "итоговая", "годовая оценка"]),
 ];
@@ -50,9 +73,7 @@ struct PeriodMarksPayload {
 
 #[derive(Deserialize, Default)]
 struct PeriodMarksResponse {
-    #[serde(default)]
     success: bool,
-    #[serde(default)]
     data: Vec<RawSubjectFinals>,
 }
 
@@ -124,17 +145,16 @@ pub fn request(session: &UserSession) -> ApiRequest {
 }
 
 pub fn parse_finals(raw: &str) -> Vec<SubjectFinalsData> {
-    let resp: PeriodMarksResponse = match serde_json::from_str(raw) {
-        Ok(r) => r,
-        Err(e) => {
-            log::error!("periodmarks: не разобрать: {:?}", e);
-            return Vec::new();
-        }
-    };
+    parse_finals_checked(raw).unwrap_or_default()
+}
+
+pub fn parse_finals_checked(raw: &str) -> Result<Vec<SubjectFinalsData>, crate::api::FetchError> {
+    let resp: PeriodMarksResponse =
+        serde_json::from_str(raw).map_err(|_| crate::api::FetchError::BadData)?;
     if !resp.success {
-        log::warn!("periodmarks: success=false");
+        return Err(crate::api::FetchError::BadData);
     }
-    resp.data.into_iter().map(build_subject).collect()
+    Ok(resp.data.into_iter().map(build_subject).collect())
 }
 
 fn build_subject(raw: RawSubjectFinals) -> SubjectFinalsData {
@@ -161,7 +181,10 @@ fn build_subject(raw: RawSubjectFinals) -> SubjectFinalsData {
             color_val,
         });
     }
-    SubjectFinalsData { subject, marks: cells }
+    SubjectFinalsData {
+        subject,
+        marks: cells,
+    }
 }
 
 // Приоритет: официальная MARK. Для четвертей при её отсутствии — округлённый
@@ -245,11 +268,26 @@ pub fn demo_finals() -> Vec<SubjectFinalsData> {
         ],
     };
     vec![
-        row("Алгебра", [("5", 5.0), ("4", 4.0), ("5", 5.0), ("—", 0.0), ("—", 0.0)]),
-        row("Русский язык", [("4", 4.0), ("4", 4.0), ("4", 4.0), ("—", 0.0), ("—", 0.0)]),
-        row("Физика", [("4", 4.0), ("3", 3.0), ("4", 4.0), ("—", 0.0), ("—", 0.0)]),
-        row("История", [("5", 5.0), ("5", 5.0), ("5", 5.0), ("—", 0.0), ("—", 0.0)]),
-        row("Английский язык", [("5", 5.0), ("4", 4.0), ("5", 5.0), ("—", 0.0), ("—", 0.0)]),
+        row(
+            "Алгебра",
+            [("5", 5.0), ("4", 4.0), ("5", 5.0), ("—", 0.0), ("—", 0.0)],
+        ),
+        row(
+            "Русский язык",
+            [("4", 4.0), ("4", 4.0), ("4", 4.0), ("—", 0.0), ("—", 0.0)],
+        ),
+        row(
+            "Физика",
+            [("4", 4.0), ("3", 3.0), ("4", 4.0), ("—", 0.0), ("—", 0.0)],
+        ),
+        row(
+            "История",
+            [("5", 5.0), ("5", 5.0), ("5", 5.0), ("—", 0.0), ("—", 0.0)],
+        ),
+        row(
+            "Английский язык",
+            [("5", 5.0), ("4", 4.0), ("5", 5.0), ("—", 0.0), ("—", 0.0)],
+        ),
     ]
 }
 
@@ -291,8 +329,22 @@ mod tests {
     #[test]
     fn views_filter_empty_rows() {
         let subjects = vec![
-            SubjectFinalsData { subject: "A".into(), marks: vec![FinalCellData { label: "1".into(), display: "5".into(), color_val: 5.0 }] },
-            SubjectFinalsData { subject: "B".into(), marks: vec![FinalCellData { label: "1".into(), display: "—".into(), color_val: 0.0 }] },
+            SubjectFinalsData {
+                subject: "A".into(),
+                marks: vec![FinalCellData {
+                    label: "1".into(),
+                    display: "5".into(),
+                    color_val: 5.0,
+                }],
+            },
+            SubjectFinalsData {
+                subject: "B".into(),
+                marks: vec![FinalCellData {
+                    label: "1".into(),
+                    display: "—".into(),
+                    color_val: 0.0,
+                }],
+            },
         ];
         assert_eq!(finals_views(subjects).len(), 1);
     }

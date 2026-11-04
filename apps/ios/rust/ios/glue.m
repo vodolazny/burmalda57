@@ -126,7 +126,9 @@ size_t bw_app_support_dir(char *buf, size_t cap) {
         if (self.sent) return;
         for (NSHTTPCookie *c in cookies) {
             if (![c.name isEqualToString:@"X1_SSO"]) continue;
-            if (!([c.domain hasSuffix:@"obr57.ru"] || [c.domain hasSuffix:@"shkolove.ru"])) continue;
+            NSString *domain = c.domain.lowercaseString;
+            if (!([domain isEqualToString:@"obr57.ru"] || [domain hasSuffix:@".obr57.ru"] ||
+                  [domain isEqualToString:@"shkolove.ru"] || [domain hasSuffix:@".shkolove.ru"])) continue;
             NSString *v = [c.value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
             if (v.length == 0 || [v isEqualToString:@"deleted"]) continue;
 

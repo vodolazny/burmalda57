@@ -15,9 +15,9 @@ pub struct ChildInfo {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserSession {
-    pub sid: String,          // кука X1_SSO
-    pub user_guid: String,    // PARTICIPANT.SYS_GUID — активный ученик
-    pub apikey: String,       // сессионный apikey
+    pub sid: String,       // кука X1_SSO
+    pub user_guid: String, // PARTICIPANT.SYS_GUID — активный ученик
+    pub apikey: String,    // сессионный apikey
     pub full_name: String,
     pub school_name: String,
     pub school_class: String,
@@ -134,8 +134,20 @@ pub struct RecentGradeView {
 #[derive(Clone, Debug, Default)]
 pub struct GradeMarkView {
     pub value: i32,
+    pub weight: i32,
     pub date: String,
     pub work: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct GradeProjection {
+    pub average: f64,
+    pub average_text: String,
+    pub count: i32,
+    pub final_mark: i32,
+    pub counts: [i32; 4],
+    pub fives_needed: i32,
+    pub weighted: bool,
 }
 
 #[derive(Clone, Debug, Default)]

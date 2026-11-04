@@ -15,8 +15,11 @@ import {
     Lesson, ChildItem, RecentGrade, FinalMark, SubjectFinals,
     ChartPoint, ChartDivider, SubjectChart, SubjectToggle,
     SubjectGrades as MobileSubjectGrades,
+    GradeMark as DesktopGradeMark,
 } from "../../../crates/ui/ui/types.slint";
 export { Theme as MobileTheme, Validate as MobileValidate } from "../../../crates/ui/ui/theme.slint";
+export { GradeMath, GradeSimulation } from "../../../crates/ui/ui/grade_math.slint";
+import { GradeMath, GradeSimulation } from "../../../crates/ui/ui/grade_math.slint";
 
 // Проверка времени (реализация в Rust). invalid(s) == true — формат/диапазон неверный.
 // Пустая строка считается корректной. Если Rust не подключит колбэк, по умолчанию false (валидация отключена).
@@ -25,11 +28,6 @@ export global Validate {
 }
 
 // Одна оценка в ленте предмета
-export struct DesktopGradeMark {
-    value: int,
-    date: string,   // короткая дата "06.04"
-    work: string,   // название/тип работы ("Контрольная работа") — может быть пустым
-}
 // Предмет со средним баллом и списком оценок за период
 export struct DesktopSubjectGrades {
     subject: string,
@@ -2807,6 +2805,7 @@ component SimStepper inherits Rectangle {
 // Панель симулятора «что если» — встроена в правую панель деталей предмета.
 // Виртуальные оценки прибавляются к реальным, прогноз пересчитывается live.
 component SimPanel inherits Rectangle {
+    in property <[DesktopGradeMark]> source-marks;
     in property <float> real-avg;
     in property <int> real-count;
     in property <string> real-avg-str;
@@ -2817,7 +2816,7 @@ component SimPanel inherits Rectangle {
     callback egg();   // пасхалка (67 двоек) — показывает GradesView
 
     // При смене предмета виртуальные оценки сбрасываются
-    changed real-avg => { self.net2 = 0; self.net3 = 0; self.net4 = 0; self.net5 = 0; }
+    changed source-marks => { self.net2 = 0; self.net3 = 0; self.net4 = 0; self.net5 = 0; }
 
     property <int> net2;
     property <int> net3;
@@ -2825,17 +2824,10 @@ component SimPanel inherits Rectangle {
     property <int> net5;
 
     property <int> change-count: root.net2 + root.net3 + root.net4 + root.net5;
-    property <float> change-sum: root.net2 * 2 + root.net3 * 3 + root.net4 * 4 + root.net5 * 5;
-    property <int> total-count: root.real-count + root.change-count;
-    property <float> real-sum: root.real-avg * root.real-count;
-    property <float> proj-avg: root.total-count <= 0 ? 0 : (root.real-sum + root.change-sum) / root.total-count;
-    property <int> proj-final: root.total-count <= 0 ? 0
-        : root.proj-avg.floor() + ((root.proj-avg - root.proj-avg.floor()) >= 0.5999 ? 1 : 0);
-    property <int> avg-hundredths: root.total-count <= 0 ? 0 : (root.proj-avg * 100 + 0.5).floor();
-    property <int> avg-int: (root.avg-hundredths / 100).floor();
-    property <int> avg-frac: root.avg-hundredths - root.avg-int * 100;
-    property <string> frac-str: root.avg-frac < 10 ? "0\{root.avg-frac}" : "\{root.avg-frac}";
-    property <string> proj-avg-str: root.total-count == 0 ? "—" : "\{root.avg-int}.\{root.frac-str}";
+    property <GradeSimulation> projection: GradeMath.project(root.source-marks, root.net2, root.net3, root.net4, root.net5);
+    property <int> total-count: root.projection.count;
+    property <int> proj-final: root.projection.final-mark;
+    property <string> proj-avg-str: root.projection.average-text;
 
     property <color> proj-color: root.proj-final >= 5 ? Theme.mark-5
         : root.proj-final == 4 ? Theme.mark-4
@@ -3073,6 +3065,7 @@ component GradesView inherits Rectangle {
     // через select-mode() для ленивой загрузки годовых. Инициализируется из
     // входного mode; после первого тапа управление берёт UI.
     property <int> active-mode: root.mode;
+    changed mode => { root.active-mode = root.mode; }
 
     // --- Выбранный предмет (List-Detail) ---
     in-out property <int> selected-subject: 0;
@@ -3091,17 +3084,15 @@ component GradesView inherits Rectangle {
     property <int> dist-total: root.sel-n5 + root.sel-n4 + root.sel-n3 + root.sel-n2;
 
     // Прогноз четвертной оценки: тот же алгоритм, что в симуляторе
-    property <int> sel-proj: root.sel-count <= 0 ? 0
-        : root.sel-avg.floor() + ((root.sel-avg - root.sel-avg.floor()) >= 0.5999 ? 1 : 0);
+    property <GradeSimulation> original: GradeMath.project(root.sel-marks, 0, 0, 0, 0);
+    property <int> sel-proj: root.original.final-mark;
     property <color> sel-proj-color: root.sel-proj >= 5 ? Theme.mark-5
         : root.sel-proj == 4 ? Theme.mark-4
         : root.sel-proj == 3 ? Theme.mark-3
         : root.sel-proj > 0 ? Theme.mark-2
         : Theme.on-surface-variant;
     // Сколько пятёрок подряд нужно до среднего 4.60 (порог «пятёрки»)
-    property <float> gap5-raw: (4.6 - root.sel-avg) * root.sel-count / 0.4;
-    property <int> gap5: root.sel-avg >= 4.6 ? 0
-        : (root.gap5-raw <= 0 ? 0 : (root.gap5-raw + 0.999).floor());
+    property <int> gap5: root.original.fives-needed;
 
     pure function format-col(l: string) -> string {
         return l == "1" ? "1 чт"
@@ -3358,6 +3349,7 @@ component GradesView inherits Rectangle {
                             }
 
                             if root.sel-count > 0 : SimPanel {
+                                source-marks: root.sel-marks;
                                 real-avg: root.sel-avg;
                                 real-count: root.sel-count;
                                 real-avg-str: root.sel-avg-str;
@@ -4039,6 +4031,8 @@ component ChildItemCard inherits Rectangle {
 component ChildSelectOverlay inherits Rectangle {
     in property <[ChildItem]> items;
     in property <bool> is-login: false;
+    in property <bool> busy: false;
+    in property <string> error;
     callback select-child(string);
     callback close();
 
@@ -4112,6 +4106,12 @@ component ChildSelectOverlay inherits Rectangle {
             }
 
             Rectangle { height: 1px; background: Theme.outline-variant; }
+            if root.busy || root.error != "" : Text {
+                text: root.busy ? "Загрузка…" : root.error;
+                color: root.busy ? Theme.on-surface-variant : Theme.error;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
 
             Flickable {
                 content-height: children-list.preferred-height;
@@ -4128,7 +4128,7 @@ component ChildSelectOverlay inherits Rectangle {
                         school-name: item.school-name;
                         selected: item.selected;
                         clicked => {
-                            root.select-child(item.guid);
+                            if !root.busy { root.select-child(item.guid); }
                         }
                     }
                 }
@@ -4694,6 +4694,8 @@ export component AppWindow inherits Window {
         height: 100%;
         items: root.children-list;
         is-login: root.child-select-is-login;
+        busy: root.logging-in;
+        error: root.login-error;
         select-child(g) => { root.select-child(g); }
         close => { root.close-child-select(); }
     }

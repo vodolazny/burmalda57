@@ -17,12 +17,12 @@ pub mod ports;
 pub mod stores;
 pub mod update;
 
-pub use api::{ApiRequest, FetchError, HttpResult, HttpResponse, TransportError};
+pub use api::{ApiRequest, FetchError, HttpResponse, HttpResult, TransportError};
 pub use cache::DayCache;
 pub use core::{
     ChartFetch, ChartStep, Core, DiaryAction, DiaryFetch, DiaryUpdate, FinalsAction, FinalsFetch,
     FinalsUpdate, MarksAction, MarksFetch, MarksUpdate, RecentAction, RecentDiaryAction,
-    RecentDiaryFetch, SubjectFilterUpdate,
+    RecentDiaryFetch, RecentFetch, SubjectFilterUpdate,
 };
 pub use crypto::{
     ahh_encrypt, decrypt_blob, encrypt_blob, random_bytes, CONTEXT_EVENTS, CONTEXT_FINALS,
