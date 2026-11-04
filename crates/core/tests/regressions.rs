@@ -404,9 +404,15 @@ fn unauthorized_recent_scan_stops_after_the_first_rejected_request() {
 
 #[test]
 fn explicitly_empty_previous_homework_does_not_fall_back_to_next_lessons_work() {
-    for previous in ["\"\"", "\"нет домашнего задания\"", "null"] {
+    for previous in [
+        r#"{"HOMEWORK":""}"#,
+        r#"{"HOMEWORK":"нет домашнего задания"}"#,
+        r#"{"HOMEWORK":null}"#,
+        "{}",
+        "null",
+    ] {
         let raw = format!(
-            r#"{{"success":true,"data":[{{"HOMEWORK_PREVIOUS":{{"HOMEWORK":{previous}}},"HOMEWORK":"for next lesson"}}]}}"#
+            r#"{{"success":true,"data":[{{"HOMEWORK_PREVIOUS":{previous},"HOMEWORK":"for next lesson"}}]}}"#
         );
         assert!(burmalda57_core::diary::parse_checked(&raw).unwrap()[0]
             .homework

@@ -43,7 +43,11 @@ struct DiaryLesson {
     #[serde(rename = "HOMEWORK", default)]
     homework: Option<String>,
     // То, что нужно сделать К этому уроку (задано на прошлом уроке предмета).
-    #[serde(rename = "HOMEWORK_PREVIOUS", default)]
+    #[serde(
+        rename = "HOMEWORK_PREVIOUS",
+        default,
+        deserialize_with = "present_previous_homework"
+    )]
     homework_previous: Option<DiaryHomeworkPrev>,
     #[serde(rename = "MARKS", default)]
     marks: Vec<DiaryMark>,
@@ -53,10 +57,20 @@ struct DiaryLesson {
     grade_type_name: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 struct DiaryHomeworkPrev {
     #[serde(rename = "HOMEWORK", default)]
     homework: Option<String>,
+}
+
+// Missing field means the legacy format; an explicit null means no homework.
+fn present_previous_homework<'de, D>(deserializer: D) -> Result<Option<DiaryHomeworkPrev>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(
+        Option::<DiaryHomeworkPrev>::deserialize(deserializer)?.unwrap_or_default(),
+    ))
 }
 
 #[derive(Deserialize)]
