@@ -569,7 +569,7 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "burmalda57-android"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "android_logger",
  "burmalda57-mobile",
@@ -601,7 +601,7 @@ dependencies = [
 
 [[package]]
 name = "burmalda57-ios"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "aes-gcm",
  "burmalda57-mobile",
