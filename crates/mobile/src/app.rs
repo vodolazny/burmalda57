@@ -2,6 +2,8 @@
 // use-case'ы core и фоновый опрос. Здесь нет ни JNI, ни Objective-C —
 // только `Platform` и slint-адаптеры.
 
+use std::fs;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -12,7 +14,7 @@ use burmalda57_core::{
     notify, parse_init_http, parse_login_http, update, CacheFormat, ChartStep, Core, DiaryAction,
     FinalsAction, LoginAccount, LoginError, MarksAction, RecentAction, SecureStore,
 };
-use burmalda57_ui::{AppWindow, Validate};
+use burmalda57_ui::{AppWindow, Theme, Validate};
 use slint::ComponentHandle;
 
 use crate::avatar;
@@ -82,6 +84,7 @@ pub fn run_app(
         .on_invalid(|s| !is_valid_time(s.as_str()));
 
     platform.apply_theme(&ui);
+    init_appearance(&ui, &storage_path);
     platform.sync_safe_area(ui.as_weak());
     platform.init_notifications();
 
@@ -89,6 +92,35 @@ pub fn run_app(
     check_update(&app);
 
     ui.run()
+}
+
+fn init_appearance(ui: &AppWindow, storage_path: &str) {
+    if storage_path.is_empty() {
+        return;
+    }
+
+    let theme = ui.global::<Theme>();
+    let path = Path::new(storage_path).join(".appearance");
+    if let Ok(saved) = fs::read_to_string(&path) {
+        if let Some((mode, accent)) = saved.trim().split_once(',') {
+            if let Ok(mode @ 0..=2) = mode.parse::<i32>() {
+                theme.set_theme_mode(mode);
+            }
+            // -1 совпадает с настройкой по умолчанию на устройствах с Material You.
+            if let Ok(accent @ 0..=4) = accent.parse::<i32>() {
+                theme.set_accent_color(accent);
+            }
+        }
+    }
+
+    theme.on_appearance_changed(move |mode, accent| {
+        let pending = path.with_extension("tmp");
+        let result = fs::write(&pending, format!("{mode},{accent}"))
+            .and_then(|()| fs::rename(&pending, &path));
+        if let Err(error) = result {
+            log::warn!("Не удалось сохранить настройки оформления: {error}");
+        }
+    });
 }
 
 // ============================================================

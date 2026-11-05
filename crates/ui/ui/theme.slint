@@ -5,12 +5,47 @@ export global Validate {
 }
 
 
+export struct ThemePalette {
+    primary: color,
+    on-primary: color,
+    primary-container: color,
+    on-primary-container: color,
+    secondary-container: color,
+    on-secondary-container: color,
+    surface: color,
+    on-surface: color,
+    on-surface-variant: color,
+    outline: color,
+}
+
 export global Theme {
-    // ================================================================
-    //  БАЗОВЫЕ РОЛИ — задаются из Rust (Material You). Если система их
-    //  не отдаёт (API<31), работают дефолты по признаку dark.
-    // ================================================================
-    in-out property <bool> dark: false;
+    // 0 — тёмная, 1 — светлая, 2 — системная.
+    in-out property <int> theme-mode: 0;
+    in property <bool> system-dark;
+    out property <bool> dark: theme-mode == 0 || (theme-mode == 2 && system-dark);
+
+    // -1 — Material You, 0..4 — готовые палитры (4 — монохром).
+    in-out property <int> accent-color: has-system-palette ? -1 : 4;
+    in property <bool> has-system-palette;
+    in-out property <ThemePalette> system-light-palette: root.preset-palette(false, 4);
+    in-out property <ThemePalette> system-dark-palette: root.preset-palette(true, 4);
+    property <ThemePalette> palette: accent-color == -1 && has-system-palette
+        ? (dark ? system-dark-palette : system-light-palette)
+        : root.preset-palette(dark, accent-color);
+
+    callback appearance-changed(int, int);
+
+    public function select-appearance(mode: int, accent: int) {
+        if (mode != root.theme-mode || accent != root.accent-color) {
+            root.theme-mode = mode;
+            root.accent-color = accent;
+            root.appearance-changed(mode, accent);
+        }
+    }
+
+    public pure function preview-accent(accent: int) -> color {
+        return root.preset-palette(false, accent).primary;
+    }
 
     // Межбуквенный интервал: Skia на iOS рисует системный шрифт без трекинга,
     // из-за чего кириллица выглядит слишком плотной. iOS-оболочка ставит 0.3px.
@@ -22,21 +57,71 @@ export global Theme {
     // «Хвост» safe-area под навбаром (iOS-оболочка считает от bottom-inset).
     in-out property <length> nav-bottom-extra: 0px;
 
-    // Accent 1 (primary)
-    in-out property <color> primary:              dark ? #D0BCFF : #6750A4;
-    in-out property <color> on-primary:           dark ? #381E72 : #FFFFFF;
-    in-out property <color> primary-container:    dark ? #4F378B : #EADDFF;
-    in-out property <color> on-primary-container: dark ? #EADDFF : #21005D;
+    out property <color> primary: palette.primary;
+    out property <color> on-primary: palette.on-primary;
+    out property <color> primary-container: palette.primary-container;
+    out property <color> on-primary-container: palette.on-primary-container;
+    out property <color> secondary-container: palette.secondary-container;
+    out property <color> on-secondary-container: palette.on-secondary-container;
+    out property <color> surface: palette.surface;
+    out property <color> on-surface: palette.on-surface;
+    out property <color> on-surface-variant: palette.on-surface-variant;
+    out property <color> outline: palette.outline;
 
-    // Accent 2 (secondary — tonal-бейджи, навбар-таблетка)
-    in-out property <color> secondary-container:    dark ? #4A4458 : #E8DEF8;
-    in-out property <color> on-secondary-container: dark ? #E8DEF8 : #1D192B;
-
-    // Нейтрали (neutral1/neutral2)
-    in-out property <color> surface:            dark ? #141218 : #FEF7FF;
-    in-out property <color> on-surface:         dark ? #E6E1E5 : #1D1B20;
-    in-out property <color> on-surface-variant: dark ? #CAC4D0 : #49454F;
-    in-out property <color> outline:            dark ? #938F99 : #79747E;
+    pure function preset-palette(dark: bool, accent: int) -> ThemePalette {
+        return {
+            primary: accent == 1 ? (dark ? #A8C7FA : #0B57D0)
+                : accent == 2 ? (dark ? #7ADA91 : #1B6D36)
+                : accent == 3 ? (dark ? #FFB77C : #8F4C00)
+                : accent == 4 ? (dark ? #E6E1E5 : #1D1B20)
+                : (dark ? #D0BCFF : #6750A4),
+            on-primary: accent == 1 ? (dark ? #0842A0 : #FFFFFF)
+                : accent == 2 ? (dark ? #003915 : #FFFFFF)
+                : accent == 3 ? (dark ? #4D2700 : #FFFFFF)
+                : accent == 4 ? (dark ? #1D1B20 : #FFFFFF)
+                : (dark ? #381E72 : #FFFFFF),
+            primary-container: accent == 1 ? (dark ? #0842A0 : #D3E3FD)
+                : accent == 2 ? (dark ? #005322 : #95F7AB)
+                : accent == 3 ? (dark ? #6E3900 : #FFDCC2)
+                : accent == 4 ? (dark ? #333138 : #E2E0E6)
+                : (dark ? #4F378B : #EADDFF),
+            on-primary-container: accent == 1 ? (dark ? #D3E3FD : #041E49)
+                : accent == 2 ? (dark ? #95F7AB : #00210A)
+                : accent == 3 ? (dark ? #FFDCC2 : #2E1500)
+                : accent == 4 ? (dark ? #E2E0E6 : #1D1B20)
+                : (dark ? #EADDFF : #21005D),
+            secondary-container: accent == 1 ? (dark ? #004A77 : #C2E7FF)
+                : accent == 2 ? (dark ? #2E4E36 : #CCE8D0)
+                : accent == 3 ? (dark ? #564032 : #F3DFD1)
+                : accent == 4 ? (dark ? #3A383F : #E5E1E6)
+                : (dark ? #4A4458 : #E8DEF8),
+            on-secondary-container: accent == 1 ? (dark ? #C2E7FF : #001D35)
+                : accent == 2 ? (dark ? #CCE8D0 : #0B1F11)
+                : accent == 3 ? (dark ? #F3DFD1 : #24160C)
+                : accent == 4 ? (dark ? #E5E1E6 : #1D1B20)
+                : (dark ? #E8DEF8 : #1D192B),
+            surface: accent == 1 ? (dark ? #0F141C : #F0F4FA)
+                : accent == 2 ? (dark ? #0E1510 : #F0F6F1)
+                : accent == 3 ? (dark ? #18120E : #FAF2EB)
+                : accent == 4 ? (dark ? #141414 : #FAFAFA)
+                : (dark ? #141218 : #FEF7FF),
+            on-surface: accent == 1 ? (dark ? #E1E7F0 : #141B24)
+                : accent == 2 ? (dark ? #E0E8E1 : #121D15)
+                : accent == 3 ? (dark ? #E8E2DC : #221811)
+                : accent == 4 ? (dark ? #E4E4E4 : #1A1A1A)
+                : (dark ? #E6E1E5 : #1D1B20),
+            on-surface-variant: accent == 1 ? (dark ? #C0C8D4 : #404854)
+                : accent == 2 ? (dark ? #BFD0C2 : #3F4A42)
+                : accent == 3 ? (dark ? #CFC3B8 : #4E443C)
+                : accent == 4 ? (dark ? #C2C2C2 : #4A4A4A)
+                : (dark ? #CAC4D0 : #49454F),
+            outline: accent == 1 ? (dark ? #8A939F : #707884)
+                : accent == 2 ? (dark ? #88968B : #6E7971)
+                : accent == 3 ? (dark ? #978C82 : #7D736A)
+                : accent == 4 ? (dark ? #888888 : #7A7A7A)
+                : (dark ? #938F99 : #79747E),
+        };
+    }
 
     // ================================================================
     //  ПРОИЗВОДНЫЕ — считаются из базовых, поэтому следуют за Material You.

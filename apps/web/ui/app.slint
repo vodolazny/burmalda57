@@ -4,7 +4,9 @@ import { GradesView as MobileGrades } from "../../../crates/ui/ui/views/grades.s
 import { ProfileView as MobileProfile } from "../../../crates/ui/ui/views/profile.slint";
 import { LoginScreen as MobileLogin } from "../../../crates/ui/ui/views/login.slint";
 import { NavItem as MobileNavItem } from "../../../crates/ui/ui/components/navigation.slint";
+import { AccentPicker } from "../../../crates/ui/ui/components/appearance.slint";
 import { SubjectsOverlay } from "../../../crates/ui/ui/views/subjects_overlay.slint";
+import { Theme as MobileTheme } from "../../../crates/ui/ui/theme.slint";
 // Shared views and their callers must use the same Slint struct definitions.
 export {
     Lesson, ChildItem, RecentGrade, FinalMark, SubjectFinals,
@@ -44,92 +46,17 @@ export struct DesktopSubjectGrades {
 //  Material 3 — цветовые роли (tonal surfaces + accent)
 // ============================================================
 export global Theme {
-    // ================================================================
-    //  БАЗОВЫЕ РОЛИ — задаются из Rust (Material You). Если система их
-    //  не отдаёт (API<31), работают дефолты по признаку dark.
-    // ================================================================
-    // Режим темы: 0 — Тёмная, 1 — Светлая, 2 — Системная (по умолчанию)
-    in-out property <int> theme-mode: 2;
-    in-out property <bool> system-dark: false;
-
-    // Результирующий признак dark
-    in-out property <bool> dark: theme-mode == 0 ? true : theme-mode == 1 ? false : system-dark;
-
-    // Акцентный цвет: 0 — Фиолетовый (M3), 1 — Синий, 2 — Зелёный, 3 — Оранжевый, 4 — Ч/Б (монохром)
-    in-out property <int> accent-color: 0;
-
-    // Accent 1 (primary)
-    in-out property <color> primary:
-        accent-color == 1 ? (dark ? #A8C7FA : #0B57D0) :
-        accent-color == 2 ? (dark ? #7ADA91 : #1B6D36) :
-        accent-color == 3 ? (dark ? #FFB77C : #8F4C00) :
-        accent-color == 4 ? (dark ? #E6E1E5 : #1D1B20) :
-        (dark ? #D0BCFF : #6750A4);
-
-    in-out property <color> on-primary:
-        accent-color == 1 ? (dark ? #0842A0 : #FFFFFF) :
-        accent-color == 2 ? (dark ? #003915 : #FFFFFF) :
-        accent-color == 3 ? (dark ? #4D2700 : #FFFFFF) :
-        accent-color == 4 ? (dark ? #1D1B20 : #FFFFFF) :
-        (dark ? #381E72 : #FFFFFF);
-
-    in-out property <color> primary-container:
-        accent-color == 1 ? (dark ? #0842A0 : #D3E3FD) :
-        accent-color == 2 ? (dark ? #005322 : #95F7AB) :
-        accent-color == 3 ? (dark ? #6E3900 : #FFDCC2) :
-        accent-color == 4 ? (dark ? #333138 : #E2E0E6) :
-        (dark ? #4F378B : #EADDFF);
-
-    in-out property <color> on-primary-container:
-        accent-color == 1 ? (dark ? #D3E3FD : #041E49) :
-        accent-color == 2 ? (dark ? #95F7AB : #00210A) :
-        accent-color == 3 ? (dark ? #FFDCC2 : #2E1500) :
-        accent-color == 4 ? (dark ? #E2E0E6 : #1D1B20) :
-        (dark ? #EADDFF : #21005D);
-
-    // Accent 2 (secondary — tonal-бейджи, навбар-таблетка)
-    in-out property <color> secondary-container:
-        accent-color == 1 ? (dark ? #004A77 : #C2E7FF) :
-        accent-color == 2 ? (dark ? #2E4E36 : #CCE8D0) :
-        accent-color == 3 ? (dark ? #564032 : #F3DFD1) :
-        accent-color == 4 ? (dark ? #3A383F : #E5E1E6) :
-        (dark ? #4A4458 : #E8DEF8);
-
-    in-out property <color> on-secondary-container:
-        accent-color == 1 ? (dark ? #C2E7FF : #001D35) :
-        accent-color == 2 ? (dark ? #CCE8D0 : #0B1F11) :
-        accent-color == 3 ? (dark ? #F3DFD1 : #24160C) :
-        accent-color == 4 ? (dark ? #E5E1E6 : #1D1B20) :
-        (dark ? #E8DEF8 : #1D192B);
-
-    // Нейтрали с динамическим тинтом выбранной палитры (Material You)
-    in-out property <color> surface:
-        accent-color == 1 ? (dark ? #0f141c : #f0f4fa) :
-        accent-color == 2 ? (dark ? #0e1510 : #f0f6f1) :
-        accent-color == 3 ? (dark ? #18120e : #faf2eb) :
-        accent-color == 4 ? (dark ? #141414 : #fafafa) :
-        (dark ? #141218 : #fef7ff);
-
-    in-out property <color> on-surface:
-        accent-color == 1 ? (dark ? #e1e7f0 : #141b24) :
-        accent-color == 2 ? (dark ? #e0e8e1 : #121d15) :
-        accent-color == 3 ? (dark ? #e8e2dc : #221811) :
-        accent-color == 4 ? (dark ? #e4e4e4 : #1a1a1a) :
-        (dark ? #e6e1e5 : #1d1b20);
-
-    in-out property <color> on-surface-variant:
-        accent-color == 1 ? (dark ? #c0c8d4 : #404854) :
-        accent-color == 2 ? (dark ? #bfd0c2 : #3f4a42) :
-        accent-color == 3 ? (dark ? #cfc3b8 : #4e443c) :
-        accent-color == 4 ? (dark ? #c2c2c2 : #4a4a4a) :
-        (dark ? #cac4d0 : #49454f);
-
-    in-out property <color> outline:
-        accent-color == 1 ? (dark ? #8a939f : #707884) :
-        accent-color == 2 ? (dark ? #88968b : #6e7971) :
-        accent-color == 3 ? (dark ? #978c82 : #7d736a) :
-        accent-color == 4 ? (dark ? #888888 : #7a7a7a) :
-        (dark ? #938f99 : #79747e);
+    out property <bool> dark: MobileTheme.dark;
+    out property <color> primary: MobileTheme.primary;
+    out property <color> on-primary: MobileTheme.on-primary;
+    out property <color> primary-container: MobileTheme.primary-container;
+    out property <color> on-primary-container: MobileTheme.on-primary-container;
+    out property <color> secondary-container: MobileTheme.secondary-container;
+    out property <color> on-secondary-container: MobileTheme.on-secondary-container;
+    out property <color> surface: MobileTheme.surface;
+    out property <color> on-surface: MobileTheme.on-surface;
+    out property <color> on-surface-variant: MobileTheme.on-surface-variant;
+    out property <color> outline: MobileTheme.outline;
 
     // ================================================================
     //  ПРОИЗВОДНЫЕ — считаются из базовых, следуя за Material You.
@@ -2011,45 +1938,6 @@ component DiaryView inherits Rectangle {
 
 }
 
-// Кружок выбора акцентного цвета (Material You)
-component ColorDot inherits Rectangle {
-    in property <color> dot-color;
-    in property <bool> selected;
-    in property <bool> is-bw: false;
-    callback clicked();
-
-    width: 38px;
-    height: 38px;
-    border-radius: 19px;
-    background: transparent;
-    border-width: root.selected ? 2px : 0px;
-    border-color: Theme.primary;
-
-    Rectangle {
-        width: 26px;
-        height: 26px;
-        border-radius: 13px;
-        background: root.is-bw ? @linear-gradient(135deg, #1C1B1F 50%, #E6E1E5 50%) : root.dot-color;
-        border-width: root.is-bw ? 1px : 0px;
-        border-color: Theme.outline-variant;
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-
-        if root.selected : Path {
-            width: 14px;
-            height: 14px;
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            viewbox-width: 24;
-            viewbox-height: 24;
-            commands: "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z";
-            fill: root.is-bw ? (Theme.dark ? #FFFFFF : #000000) : #ffffff;
-        }
-    }
-
-    TouchArea { clicked => { root.clicked(); } }
-}
-
 component ProfileView inherits Rectangle {
     in property <string> full-name;
     in property <string> school-name;
@@ -2324,8 +2212,8 @@ component ProfileView inherits Rectangle {
                                     horizontal-alignment: left;
                                 }
                                 Text {
-                                    text: Theme.theme-mode == 0 ? "Тёмная тема"
-                                        : Theme.theme-mode == 1 ? "Светлая тема"
+                                    text: MobileTheme.theme-mode == 0 ? "Тёмная тема"
+                                        : MobileTheme.theme-mode == 1 ? "Светлая тема"
                                         : "Следовать настройкам системы";
                                     font-size: 12px;
                                     color: Theme.on-surface-variant;
@@ -2338,8 +2226,8 @@ component ProfileView inherits Rectangle {
                                 SegmentedButtons {
                                     width: 280px;
                                     options: ["Тёмная", "Светлая", "Системная"];
-                                    selected: Theme.theme-mode;
-                                    select(i) => { Theme.theme-mode = i; }
+                                    selected: MobileTheme.theme-mode;
+                                    select(i) => { MobileTheme.select-appearance(i, MobileTheme.accent-color); }
                                 }
                             }
                         }
@@ -2365,37 +2253,7 @@ component ProfileView inherits Rectangle {
 
                             VerticalLayout {
                                 alignment: center;
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    alignment: end;
-
-                                    ColorDot {
-                                        dot-color: #6750A4;
-                                        selected: Theme.accent-color == 0;
-                                        clicked => { Theme.accent-color = 0; }
-                                    }
-                                    ColorDot {
-                                        dot-color: #0B57D0;
-                                        selected: Theme.accent-color == 1;
-                                        clicked => { Theme.accent-color = 1; }
-                                    }
-                                    ColorDot {
-                                        dot-color: #1B6D36;
-                                        selected: Theme.accent-color == 2;
-                                        clicked => { Theme.accent-color = 2; }
-                                    }
-                                    ColorDot {
-                                        dot-color: #8F4C00;
-                                        selected: Theme.accent-color == 3;
-                                        clicked => { Theme.accent-color = 3; }
-                                    }
-                                    ColorDot {
-                                        dot-color: #555555;
-                                        is-bw: true;
-                                        selected: Theme.accent-color == 4;
-                                        clicked => { Theme.accent-color = 4; }
-                                    }
-                                }
+                                AccentPicker {}
                             }
                         }
                     }

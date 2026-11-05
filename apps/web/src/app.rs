@@ -91,7 +91,7 @@ pub(crate) async fn app_main() {
 
     ui.global::<crate::MobileValidate>()
         .on_invalid(|s| !is_valid_time(s.as_str()));
-    crate::theme::apply_system_theme(&ui);
+    crate::theme::init(&ui);
 
     if DEMO_ONLY {
         enter_demo(&app);

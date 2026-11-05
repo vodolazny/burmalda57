@@ -63,10 +63,8 @@ impl Platform for IosPlatform {
     }
 
     fn apply_theme(&self, ui: &AppWindow) {
-        // Material You нет: берём только светлую/тёмную тему системы,
-        // остальные цвета остаются из Theme в crates/ui/ui/theme.slint.
         let theme = ui.global::<Theme>();
-        theme.set_dark(crate::ios::is_dark());
+        theme.set_system_dark(crate::ios::is_dark());
         theme.set_tracking(0.3);
         theme.set_nav_height(64.0);
     }

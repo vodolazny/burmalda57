@@ -46,6 +46,14 @@ export component SegmentedButtons inherits Rectangle {
         for opt[i] in root.options : Rectangle {
             horizontal-stretch: 1;
             background: i == root.selected ? Theme.secondary-container : transparent;
+            border-top-left-radius: i == 0 ? root.border-radius : 0px;
+            border-bottom-left-radius: self.border-top-left-radius;
+            border-top-right-radius: i == root.options.length - 1 ? root.border-radius : 0px;
+            border-bottom-right-radius: self.border-top-right-radius;
+            accessible-role: button;
+            accessible-label: opt;
+            accessible-checked: i == root.selected;
+            accessible-action-default => { root.select(i); }
 
             // Разделитель слева (кроме первого и соседей выбранного)
             if (i > 0 && i != root.selected && (i - 1) != root.selected) : Rectangle {

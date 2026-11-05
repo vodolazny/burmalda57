@@ -1,0 +1,97 @@
+import { Theme } from "../theme.slint";
+
+component ColorDot inherits Rectangle {
+    in property <string> label;
+    in property <color> dot-color;
+    in property <bool> selected;
+    in property <bool> monochrome;
+    in property <bool> automatic;
+    callback clicked();
+
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-checked: root.selected;
+    accessible-action-default => { root.clicked(); }
+
+    Rectangle {
+        width: 38px;
+        height: 38px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: 19px;
+        border-width: root.selected ? 2px : 0px;
+        border-color: Theme.primary;
+
+        Rectangle {
+            width: 26px;
+            height: 26px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-radius: 13px;
+            background: root.automatic ? Theme.surface-container-highest
+                : root.monochrome ? #E6E1E5
+                : root.dot-color;
+            border-width: root.monochrome || root.automatic ? 1px : 0px;
+            border-color: Theme.outline-variant;
+
+            if root.automatic : Text {
+                text: "Авто";
+                font-size: 9px;
+                color: Theme.on-surface;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            if root.monochrome : Path {
+                width: 24px;
+                height: 24px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: "M12 0 A12 12 0 0 0 12 24 Z";
+                fill: #1C1B1F;
+            }
+
+            if root.selected && !root.automatic : Path {
+                width: 14px;
+                height: 14px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z";
+                fill: #FFFFFF;
+                stroke: root.monochrome ? #1C1B1F : transparent;
+                stroke-width: 1px;
+            }
+        }
+    }
+
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+export component AccentPicker inherits HorizontalLayout {
+    in property <length> touch-size: 38px;
+    spacing: 8px;
+    alignment: end;
+
+    if Theme.has-system-palette : ColorDot {
+        width: root.touch-size;
+        height: root.touch-size;
+        label: "Системные цвета";
+        automatic: true;
+        selected: Theme.accent-color == -1;
+        clicked => { Theme.select-appearance(Theme.theme-mode, -1); }
+    }
+
+    for name[i] in ["Фиолетовый", "Синий", "Зелёный", "Оранжевый", "Чёрно-белый"] : ColorDot {
+        width: root.touch-size;
+        height: root.touch-size;
+        label: name;
+        dot-color: Theme.preview-accent(i);
+        monochrome: i == 4;
+        selected: Theme.accent-color == i;
+        clicked => { Theme.select-appearance(Theme.theme-mode, i); }
+    }
+}

@@ -1,9 +1,9 @@
-// Ночной режим и Material You: читаем системные цвета через JNI и заливаем в Theme.
+// Ночной режим и палитры Material You из системных ресурсов Android.
 use jni::objects::{JObject, JValue};
 use jni::JNIEnv;
 use slint::ComponentHandle;
 
-use burmalda57_ui::{AppWindow, Theme};
+use burmalda57_ui::{AppWindow, Theme, ThemePalette};
 
 // Очищает отложенные исключения Java
 fn clear_exception(env: &mut JNIEnv) {
@@ -54,7 +54,6 @@ fn read_system_color(env: &mut JNIEnv, context: &JObject, name: &str) -> Option<
     Some(slint::Color::from_argb_u8(a, r, g, b))
 }
 
-// Применяет ночной режим и Material You палитру к Theme
 pub(crate) fn apply_system_theme(ui: &AppWindow) {
     let ctx = ndk_context::android_context();
     let vm = match unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) } {
@@ -84,46 +83,50 @@ pub(crate) fn apply_system_theme(ui: &AppWindow) {
     clear_exception(&mut env);
 
     let theme = ui.global::<Theme>();
-    theme.set_dark(dark);
+    theme.set_system_dark(dark);
 
     if sdk_int >= 31 {
-        // Имена системных ресурсов палитры под текущий режим.
-        // Суффикс: 50 — самый светлый тон, 900 — самый тёмный.
-        let (primary, p_cont, on_p_cont) = if dark {
-            ("system_accent1_200", "system_accent1_700", "system_accent1_100")
-        } else {
-            ("system_accent1_600", "system_accent1_100", "system_accent1_900")
-        };
-        let (sec_cont, on_sec_cont) = if dark {
-            ("system_accent2_700", "system_accent2_100")
-        } else {
-            ("system_accent2_100", "system_accent2_900")
-        };
-        let (surface, on_surface, on_surface_var) = if dark {
-            ("system_neutral1_900", "system_neutral1_50", "system_neutral2_200")
-        } else {
-            ("system_neutral1_50", "system_neutral1_900", "system_neutral2_700")
-        };
-        let outline = if dark { "system_neutral2_400" } else { "system_neutral2_500" };
+        theme.set_system_light_palette(read_system_palette(
+            &mut env,
+            &context,
+            false,
+            theme.get_system_light_palette(),
+        ));
+        theme.set_system_dark_palette(read_system_palette(
+            &mut env,
+            &context,
+            true,
+            theme.get_system_dark_palette(),
+        ));
+        theme.set_has_system_palette(true);
+    }
+    clear_exception(&mut env);
+}
 
-        // Accent 1
-        if let Some(c) = read_system_color(&mut env, &context, primary)    { theme.set_primary(c); }
-        if let Some(c) = read_system_color(&mut env, &context, p_cont)     { theme.set_primary_container(c); }
-        if let Some(c) = read_system_color(&mut env, &context, on_p_cont)  { theme.set_on_primary_container(c); }
-        // Accent 2 (secondary)
-        if let Some(c) = read_system_color(&mut env, &context, sec_cont)   { theme.set_secondary_container(c); }
-        if let Some(c) = read_system_color(&mut env, &context, on_sec_cont){ theme.set_on_secondary_container(c); }
-        // Нейтрали (поверхности/текст/линии)
-        if let Some(c) = read_system_color(&mut env, &context, surface)        { theme.set_surface(c); }
-        if let Some(c) = read_system_color(&mut env, &context, on_surface)     { theme.set_on_surface(c); }
-        if let Some(c) = read_system_color(&mut env, &context, on_surface_var) { theme.set_on_surface_variant(c); }
-        if let Some(c) = read_system_color(&mut env, &context, outline)        { theme.set_outline(c); }
-
-        theme.set_on_primary(if dark {
+fn read_system_palette(
+    env: &mut JNIEnv,
+    context: &JObject,
+    dark: bool,
+    fallback: ThemePalette,
+) -> ThemePalette {
+    let mut read_tone = |group, light_tone, dark_tone, default| {
+        let tone = if dark { dark_tone } else { light_tone };
+        read_system_color(env, context, &format!("system_{group}_{tone}")).unwrap_or(default)
+    };
+    ThemePalette {
+        primary: read_tone("accent1", 600, 200, fallback.primary),
+        on_primary: if dark {
             slint::Color::from_rgb_u8(0x20, 0x20, 0x20)
         } else {
             slint::Color::from_rgb_u8(0xFF, 0xFF, 0xFF)
-        });
+        },
+        primary_container: read_tone("accent1", 100, 700, fallback.primary_container),
+        on_primary_container: read_tone("accent1", 900, 100, fallback.on_primary_container),
+        secondary_container: read_tone("accent2", 100, 700, fallback.secondary_container),
+        on_secondary_container: read_tone("accent2", 900, 100, fallback.on_secondary_container),
+        surface: read_tone("neutral1", 50, 900, fallback.surface),
+        on_surface: read_tone("neutral1", 900, 50, fallback.on_surface),
+        on_surface_variant: read_tone("neutral2", 700, 200, fallback.on_surface_variant),
+        outline: read_tone("neutral2", 500, 400, fallback.outline),
     }
-    clear_exception(&mut env);
 }
