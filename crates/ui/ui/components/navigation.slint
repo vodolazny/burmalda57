@@ -45,13 +45,13 @@ export component NavItem inherits Rectangle {
                 width: 64px;
                 height: 32px;
                 border-radius: 16px;
-                background: root.selected ? Theme.secondary-container : transparent;
+                background: root.selected ? Theme.active-container : transparent;
                 animate background { duration: 150ms; }
                 NavIcon {
                     width: 100%; height: 100%;
                     id: root.icon-id;
                     selected: root.selected;
-                    tint: root.selected ? Theme.on-secondary-container : Theme.on-surface-variant;
+                    tint: root.selected ? Theme.on-active-container : Theme.on-surface-variant;
                 }
             }
         }

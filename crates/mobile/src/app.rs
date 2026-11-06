@@ -95,6 +95,8 @@ pub fn run_app(
 
     platform.apply_theme(&ui);
     init_appearance(&ui, &storage_path);
+    let theme = ui.global::<Theme>();
+    theme.invoke_scheme_changed(theme.get_dark());
     platform.sync_safe_area(ui.as_weak());
     platform.init_notifications();
 

@@ -147,13 +147,13 @@ fn read_system_palette(
     if !dark {
         let channels = [palette.primary.red(), palette.primary.green(), palette.primary.blue()];
         if channels.iter().max().unwrap() - channels.iter().min().unwrap() <= 8 {
-            let graphite = slint::Color::from_rgb_u8(0x1A, 0x1C, 0x1E);
-            let white = slint::Color::from_rgb_u8(0xFF, 0xFF, 0xFF);
+            let graphite = slint::Color::from_rgb_u8(0x1C, 0x1B, 0x1F);
             palette.primary = graphite;
-            palette.primary_container = graphite;
-            palette.on_primary_container = white;
-            palette.secondary_container = graphite;
-            palette.on_secondary_container = white;
+            let neutral = slint::Color::from_rgb_u8(0xE4, 0xE6, 0xEB);
+            palette.primary_container = neutral;
+            palette.on_primary_container = graphite;
+            palette.secondary_container = neutral;
+            palette.on_secondary_container = graphite;
         }
     }
     palette

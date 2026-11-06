@@ -48,6 +48,11 @@ export struct DesktopSubjectGrades {
 // ============================================================
 export global Theme {
     out property <bool> dark: MobileTheme.dark;
+    out property <color> active-container: MobileTheme.active-container;
+    out property <color> on-active-container: MobileTheme.on-active-container;
+    public pure function work-container(kind: string) -> color { return MobileTheme.work-container(kind); }
+    public pure function on-work-container(kind: string) -> color { return MobileTheme.on-work-container(kind); }
+
     out property <int> accent-color: MobileTheme.accent-color;
     out property <color> primary: MobileTheme.primary;
     out property <color> on-primary: MobileTheme.on-primary;
@@ -589,7 +594,7 @@ component LessonCard inherits Rectangle {
                         padding-top: 3px;
 
                         Rectangle {
-                            background: Theme.secondary-container;
+                            background: Theme.work-container(root.grade-type);
                             border-radius: 6px;
                             HorizontalLayout {
                                 padding-left: 8px;
@@ -600,7 +605,7 @@ component LessonCard inherits Rectangle {
                                     text: root.grade-type;
                                     font-size: 11px;
                                     font-weight: 600;
-                                    color: Theme.on-secondary-container;
+                                    color: Theme.on-work-container(root.grade-type);
                                 }
                             }
                         }
@@ -878,9 +883,9 @@ component LessonDetail inherits Rectangle {
                     if root.has-gtype : Rectangle {
                         height: 28px;
                         border-radius: 14px;
-                        background: Theme.secondary-container;
+                        background: Theme.work-container(root.lesson.grade-type);
                         HorizontalLayout { padding-left: 12px; padding-right: 12px;
-                            Text { text: root.lesson.grade-type; font-size: 12px; font-weight: 700; color: Theme.on-secondary-container; vertical-alignment: center; }
+                            Text { text: root.lesson.grade-type; font-size: 12px; font-weight: 700; color: Theme.on-work-container(root.lesson.grade-type); vertical-alignment: center; }
                         }
                     }
                 }
@@ -1037,13 +1042,13 @@ component NavItem inherits Rectangle {
                 width: 56px;
                 height: 32px;
                 border-radius: 16px;
-                background: root.selected ? Theme.secondary-container : transparent;
+                background: root.selected ? Theme.active-container : transparent;
                 animate background { duration: 150ms; }
                 NavIcon {
                     width: 100%; height: 100%;
                     id: root.icon-id;
                     selected: root.selected;
-                    tint: root.selected ? Theme.on-secondary-container : Theme.on-surface-variant;
+                    tint: root.selected ? Theme.on-active-container : Theme.on-surface-variant;
                 }
             }
         }
@@ -1068,13 +1073,13 @@ component NavItem inherits Rectangle {
             height: 32px;
             y: (parent.height - self.height) / 2;
             border-radius: 16px;
-            background: root.selected ? Theme.secondary-container : transparent;
+            background: root.selected ? Theme.active-container : transparent;
             animate background { duration: 150ms; }
             NavIcon {
                 width: 100%; height: 100%;
                 id: root.icon-id;
                 selected: root.selected;
-                tint: root.selected ? Theme.on-secondary-container : Theme.on-surface-variant;
+                tint: root.selected ? Theme.on-active-container : Theme.on-surface-variant;
             }
         }
         Text {
@@ -1331,33 +1336,26 @@ component SegmentedButtons inherits Rectangle {
 
     height: 40px;
     border-radius: 20px;
-    border-width: Theme.dark ? 1px : 0px;
+    border-width: 0px;
     border-color: Theme.outline-variant;
-    background: Theme.dark ? transparent : Theme.surface-variant;
+    background: Theme.surface-variant;
     clip: true;
 
     HorizontalLayout {
-        padding: Theme.dark ? 0px : 4px;
-        spacing: Theme.dark ? 0px : 4px;
+        padding: 4px;
+        spacing: 4px;
         for opt[i] in root.options : Rectangle {
             horizontal-stretch: 1;
-            border-radius: Theme.dark ? 0px : 16px;
-            background: i == root.selected ? (Theme.dark ? Theme.secondary-container : Theme.primary-container) : (seg-ta.pressed ? Theme.on-surface.transparentize(0.92) : transparent);
+            border-radius: 16px;
+            background: i == root.selected ? Theme.active-container : (seg-ta.pressed ? Theme.on-surface.transparentize(0.92) : transparent);
             animate background { duration: 120ms; }
 
-            // Разделитель слева (кроме первого и соседей выбранного)
-            if (Theme.dark && i > 0 && i != root.selected && (i - 1) != root.selected) : Rectangle {
-                x: 0;
-                width: 1px;
-                height: parent.height;
-                background: Theme.outline-variant;
-            }
 
             Text {
                 text: opt;
                 font-size: 13px;
                 font-weight: i == root.selected ? 700 : 500;
-                color: i == root.selected ? (Theme.dark ? Theme.on-secondary-container : Theme.on-primary-container) : (Theme.dark ? Theme.on-surface : Theme.on-surface-variant);
+                color: i == root.selected ? Theme.on-active-container : (Theme.dark ? Theme.on-surface : Theme.on-surface-variant);
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -4204,7 +4202,7 @@ export component AppWindow inherits Window {
                         height: 56px;
                         width: root.rail-expanded ? parent.width : 56px;
                         border-radius: 16px;
-                        background: fab-ta.pressed ? Theme.primary-container.darker(0.08) : Theme.primary-container;
+                        background: fab-ta.pressed ? (Theme.dark ? Theme.primary-container : Theme.active-container).darker(0.08) : (Theme.dark ? Theme.primary-container : Theme.active-container);
                         drop-shadow-blur: 10px;
                         drop-shadow-color: Theme.shadow;
                         drop-shadow-offset-y: 3px;
@@ -4218,7 +4216,7 @@ export component AppWindow inherits Window {
                             viewbox-height: 24;
                             commands: "M12 5 L12 19 M5 12 L19 12";
                             fill: transparent;
-                            stroke: Theme.on-primary-container;
+                            stroke: (Theme.dark ? Theme.on-primary-container : Theme.on-active-container);
                             stroke-width: 2.5px;
                         }
                         // Раскрытый: extended FAB — иконка и текст на одной
@@ -4242,7 +4240,7 @@ export component AppWindow inherits Window {
                                             viewbox-height: 24;
                                             commands: "M12 5 L12 19 M5 12 L19 12";
                                             fill: transparent;
-                                            stroke: Theme.on-primary-container;
+                                            stroke: (Theme.dark ? Theme.on-primary-container : Theme.on-active-container);
                                             stroke-width: 2.5px;
                                         }
                                     }
@@ -4252,7 +4250,7 @@ export component AppWindow inherits Window {
                                 text: "Событие";
                                 font-size: 14px;
                                 font-weight: 700;
-                                color: Theme.on-primary-container;
+                                color: (Theme.dark ? Theme.on-primary-container : Theme.on-active-container);
                                 vertical-alignment: center;
                             }
                         }

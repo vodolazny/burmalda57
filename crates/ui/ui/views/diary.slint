@@ -427,7 +427,7 @@ export component DiaryView inherits Rectangle {
         x: parent.width - self.width - 16px;
         y: parent.height - self.height - 16px;
         border-radius: 18px;
-        background: fab-ta.pressed ? Theme.primary-container.darker(0.08) : Theme.primary-container;
+        background: fab-ta.pressed ? (Theme.dark ? Theme.primary-container : Theme.active-container).darker(0.08) : (Theme.dark ? Theme.primary-container : Theme.active-container);
         drop-shadow-blur: 10px;
         drop-shadow-color: Theme.shadow;
         drop-shadow-offset-y: 3px;
@@ -440,7 +440,7 @@ export component DiaryView inherits Rectangle {
             viewbox-height: 24;
             commands: "M12 5 L12 19 M5 12 L19 12";
             fill: transparent;
-            stroke: Theme.on-primary-container;
+            stroke: (Theme.dark ? Theme.on-primary-container : Theme.on-active-container);
             stroke-width: 2.5px;
         }
         fab-ta := TouchArea {

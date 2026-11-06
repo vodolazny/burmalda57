@@ -42,6 +42,7 @@ export global Theme {
         if (mode != root.theme-mode || accent != root.accent-color) {
             root.theme-mode = mode;
             root.accent-color = accent;
+            root.scheme-changed(root.dark);
             root.appearance-changed(mode, accent);
         }
     }
@@ -59,6 +60,24 @@ export global Theme {
 
     // «Хвост» safe-area под навбаром (iOS-оболочка считает от bottom-inset).
     in-out property <length> nav-bottom-extra: 0px;
+
+    // Active controls are distinct from quiet, secondary tonal containers.
+    property <bool> light-monochrome: !dark && (accent-color == 4 || (system-colors && primary == #1C1B1F));
+    out property <color> active-container: dark ? secondary-container : (light-monochrome ? #1C1B1F : primary-container);
+    out property <color> on-active-container: dark ? on-secondary-container : (light-monochrome ? #FFFFFF : on-primary-container);
+    out property <color> warning-container: dark ? #73342F : #FFDAD6;
+    out property <color> on-warning-container: dark ? #FFDAD6 : #93000A;
+
+    public pure function is-control-work(kind: string) -> bool {
+        return kind.to-lowercase().starts-with("контрольн")
+            || kind.to-lowercase() == "кр" || kind.to-lowercase() == "к/р";
+    }
+    public pure function work-container(kind: string) -> color {
+        return root.is-control-work(kind) ? warning-container : secondary-container;
+    }
+    public pure function on-work-container(kind: string) -> color {
+        return root.is-control-work(kind) ? on-warning-container : on-secondary-container;
+    }
 
     out property <color> primary: palette.primary;
     out property <color> on-primary: palette.on-primary;

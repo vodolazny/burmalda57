@@ -25,15 +25,15 @@ export global LightPalette {
     }
     public pure function primary(accent: int) -> color {
         return accent == 1 ? #0B57D0 : accent == 2 ? #1B6D36
-             : accent == 3 ? #8F4C00 : accent == 4 ? #1A1C1E : #6750A4;
+             : accent == 3 ? #8F4C00 : accent == 4 ? #1C1B1F : #6750A4;
     }
     public pure function primary-container(accent: int) -> color {
         return accent == 1 ? #D3E4FF : accent == 2 ? #C4EED0
-             : accent == 3 ? #FFDCC2 : accent == 4 ? #1A1C1E : #EADDFF;
+             : accent == 3 ? #FFDCC2 : accent == 4 ? #E4E6EB : #EADDFF;
     }
     public pure function on-primary-container(accent: int) -> color {
         return accent == 1 ? #001C38 : accent == 2 ? #00210A
-             : accent == 3 ? #2E1500 : accent == 4 ? #FFFFFF : #21005D;
+             : accent == 3 ? #2E1500 : accent == 4 ? #1C1B1F : #21005D;
     }
     public pure function on-surface(accent: int) -> color {
         return accent == 1 ? #1A1C20 : accent == 2 ? #191D19

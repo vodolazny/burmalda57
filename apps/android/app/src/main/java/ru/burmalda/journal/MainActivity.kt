@@ -2,36 +2,53 @@ package ru.burmalda.journal
 
 import android.app.NativeActivity
 import android.content.res.Configuration
+import android.graphics.Color
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : NativeActivity() {
 
     private var backPressedTime: Long = 0
-    private var darkTheme: Boolean = false
+    private var darkTheme: Boolean? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val systemDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
-        updateSystemBars(systemDark)
+        if (darkTheme == null) updateSystemBars(systemDark)
     }
 
     // Called from Slint's thread through JNI; Window must be updated on Android's UI thread.
     fun updateSystemBars(dark: Boolean) {
         runOnUiThread {
             darkTheme = dark
-            WindowInsetsControllerCompat(window, window.decorView).apply {
-                isAppearanceLightStatusBars = !dark
-                isAppearanceLightNavigationBars = !dark
+            applySystemBarAppearance()
+            // Reapply after NativeActivity attaches/configures its decor, using the latest theme.
+            window.decorView.post {
+                if (!isFinishing && !isDestroyed) applySystemBarAppearance()
             }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun applySystemBarAppearance() {
+        val dark = darkTheme ?: return
+        // Legacy translucent flags prevent light status bar icons on older Android versions.
+        window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS or
+            WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+        window.statusBarColor = Color.TRANSPARENT
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
         }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) updateSystemBars(darkTheme)
+        if (hasFocus) applySystemBarAppearance()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
