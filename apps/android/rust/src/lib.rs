@@ -103,6 +103,14 @@ pub extern "C" fn Java_ru_burmalda_journal_EsiaAuthActivity_sendTokenToRust(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_ru_burmalda_journal_MainActivity_nativeOnThemeChanged(
+    _env: JNIEnv,
+    _activity: JObject,
+) {
+    burmalda57_mobile::refresh_theme();
+}
+
+#[no_mangle]
 pub extern "C" fn Java_ru_burmalda_journal_MainActivity_nativeOnBackPressed(
     _env: JNIEnv,
     _class: JClass,

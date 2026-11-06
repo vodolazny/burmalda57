@@ -11,3 +11,6 @@
     native <methods>;
 }
 -keep class android.app.NativeActivity { *; }
+-keepclassmembers class ru.burmalda.journal.MainActivity {
+    public void updateSystemBars(boolean);
+}

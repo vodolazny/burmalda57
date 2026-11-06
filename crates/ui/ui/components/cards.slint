@@ -31,7 +31,7 @@ export component DetailRow inherits HorizontalLayout {
             text: root.label;
             font-size: 10px;
             font-weight: 600;
-            color: Theme.on-surface-variant.transparentize(0.3);
+            color: Theme.dark ? Theme.on-surface-variant.transparentize(0.3) : Theme.on-surface-variant;
         }
         Text {
             letter-spacing: Theme.tracking;
@@ -78,7 +78,7 @@ export component RecentGradeCard inherits Rectangle {
     width: 132px;
     height: 116px;
     border-radius: Theme.radius-l;
-    background: Theme.surface-container-high;
+    background: Theme.dark ? Theme.surface-container-high : Theme.surface-card;
 
     VerticalLayout {
         padding: 12px;
@@ -268,7 +268,7 @@ export component LessonCard inherits Rectangle {
                         letter-spacing: Theme.tracking;
                         text: root.time;
                         font-size: 11px;
-                        color: Theme.on-surface-variant.transparentize(0.4);
+                        color: Theme.dark ? Theme.on-surface-variant.transparentize(0.4) : Theme.on-surface-variant;
                         overflow: elide;
                         wrap: no-wrap;
                     }
@@ -411,7 +411,7 @@ export component LessonCard inherits Rectangle {
                         letter-spacing: Theme.tracking;
                         text: "Тема урока не указана";
                         font-size: 13px;
-                        color: Theme.on-surface-variant.transparentize(0.25);
+                        color: Theme.dark ? Theme.on-surface-variant.transparentize(0.25) : Theme.on-surface-variant;
                     }
                     if root.has-hw : HorizontalLayout {
                         spacing: 10px;
@@ -459,7 +459,7 @@ export component LessonCard inherits Rectangle {
                         letter-spacing: Theme.tracking;
                         text: "Домашнее задание не указано";
                         font-size: 13px;
-                        color: Theme.on-surface-variant.transparentize(0.25);
+                        color: Theme.dark ? Theme.on-surface-variant.transparentize(0.25) : Theme.on-surface-variant;
                     }
 
                     // --- Заметка (локальная, inline-редактирование с autosave) ---
@@ -487,7 +487,7 @@ export component LessonCard inherits Rectangle {
                                 text: "Заметка";
                                 font-size: 10px;
                                 font-weight: 600;
-                                color: Theme.on-surface-variant.transparentize(0.3);
+                                color: Theme.dark ? Theme.on-surface-variant.transparentize(0.3) : Theme.on-surface-variant;
                                 vertical-alignment: center;
                             }
                             // Подтверждение autosave
@@ -550,7 +550,7 @@ export component LessonCard inherits Rectangle {
                                     text: "Добавить заметку";
                                     font-size: 13px;
                                     vertical-alignment: center;
-                                    color: Theme.on-surface-variant.transparentize(0.25);
+                                    color: Theme.dark ? Theme.on-surface-variant.transparentize(0.25) : Theme.on-surface-variant;
                                 }
                             }
                         }
@@ -668,8 +668,8 @@ export component SubjectCard inherits Rectangle {
                 height: 30px;
                 width: badge.preferred-width + 20px;
                 border-radius: 15px;
-                background: am.fg.transparentize(0.86);
-                border-width: 1px;
+                background: Theme.dark ? am.fg.transparentize(0.86) : am.container;
+                border-width: Theme.dark ? 1px : 0px;
                 border-color: am.fg.transparentize(0.7);
                 badge := HorizontalLayout {
                     Text {
@@ -759,7 +759,7 @@ export component ChildItemCard inherits Rectangle {
 
     height: card-layout.preferred-height + 20px;
     border-radius: Theme.radius-m;
-    background: root.selected ? Theme.primary-container.transparentize(0.4) : (ta.pressed ? Theme.surface-container-highest : Theme.surface-container-high);
+    background: root.selected ? (Theme.dark ? Theme.primary-container.transparentize(0.4) : Theme.surface-variant) : (ta.pressed ? Theme.surface-container-highest : Theme.surface-container-high);
     border-width: root.selected ? 2px : 1px;
     border-color: root.selected ? Theme.primary : Theme.outline-variant;
     animate background { duration: 120ms; }

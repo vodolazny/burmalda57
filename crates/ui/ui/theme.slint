@@ -1,4 +1,5 @@
 // Theme and global validators / math
+import { LightPalette } from "light_palette.slint";
 
 export global Validate {
     pure callback invalid(string) -> bool;
@@ -34,6 +35,8 @@ export global Theme {
         : root.preset-palette(dark, accent-color);
 
     callback appearance-changed(int, int);
+    callback scheme-changed(bool);
+    changed dark => { root.scheme-changed(root.dark); }
 
     public function select-appearance(mode: int, accent: int) {
         if (mode != root.theme-mode || accent != root.accent-color) {
@@ -69,6 +72,20 @@ export global Theme {
     out property <color> outline: palette.outline;
 
     pure function preset-palette(dark: bool, accent: int) -> ThemePalette {
+        if !dark {
+            return {
+                primary: LightPalette.primary(accent),
+                on-primary: #FFFFFF,
+                primary-container: LightPalette.primary-container(accent),
+                on-primary-container: LightPalette.on-primary-container(accent),
+                secondary-container: LightPalette.primary-container(accent),
+                on-secondary-container: LightPalette.on-primary-container(accent),
+                surface: LightPalette.background(accent),
+                on-surface: LightPalette.on-surface(accent),
+                on-surface-variant: LightPalette.on-surface-variant(accent),
+                outline: #79747E,
+            };
+        }
         return {
             primary: accent == 1 ? (dark ? #A8C7FA : #0B57D0)
                 : accent == 2 ? (dark ? #7ADA91 : #1B6D36)
@@ -123,17 +140,25 @@ export global Theme {
         };
     }
 
+    // HCT neutral roles supplied by Android; presets keep their own light tones.
+    in-out property <color> light-surface-variant: LightPalette.surface-variant(0);
+    in-out property <color> light-surface-highest: LightPalette.surface-highest(0);
+    in-out property <color> light-outline-variant: LightPalette.outline-variant(0);
+    property <bool> system-colors: accent-color == -1 && has-system-palette;
+
     // ================================================================
-    //  ПРОИЗВОДНЫЕ — считаются из базовых, поэтому следуют за Material You.
-    //  Лестница elevation: сдвигаем surface в сторону on-surface.
+    //  Тёмная лестница сохраняет прежний elevation. В светлой теме роли
+    //  заданы явно: тонированный фон → белая карточка → вложенная плашка.
     // ================================================================
     out property <color> background:                surface;
-    out property <color> surface-container-low:     surface.mix(on-surface, 0.96);
-    out property <color> surface-container:         surface.mix(on-surface, 0.93);
-    out property <color> surface-container-high:    surface.mix(on-surface, 0.89);
-    out property <color> surface-container-highest: surface.mix(on-surface, 0.86);
-    out property <color> outline-variant:           surface.mix(on-surface, 0.72);
-    out property <color> nav-bg:                    surface.mix(on-surface, 0.93);
+    out property <color> surface-card:              dark ? surface-container : LightPalette.surface-card;
+    out property <color> surface-variant:           dark ? surface.mix(on-surface, 0.89) : (system-colors ? light-surface-variant : LightPalette.surface-variant(accent-color));
+    out property <color> surface-container-low:     dark ? surface.mix(on-surface, 0.96) : LightPalette.surface-card;
+    out property <color> surface-container:         dark ? surface.mix(on-surface, 0.93) : LightPalette.surface-card;
+    out property <color> surface-container-high:    dark ? surface.mix(on-surface, 0.89) : surface-variant;
+    out property <color> surface-container-highest: dark ? surface.mix(on-surface, 0.86) : (system-colors ? light-surface-highest : LightPalette.surface-highest(accent-color));
+    out property <color> outline-variant:           dark ? surface.mix(on-surface, 0.72) : (system-colors ? light-outline-variant : LightPalette.outline-variant(accent-color));
+    out property <color> nav-bg:                    dark ? surface.mix(on-surface, 0.93) : LightPalette.surface-card;
     out property <color> shadow:             dark ? #00000066 : #0000001F;
 
     // --- Ошибки (M3 error roles) ---
@@ -145,10 +170,14 @@ export global Theme {
     out property <color> primary-2: primary.brighter(0.12);
 
     // --- Цвета оценок (светлее/пастельнее в тёмной теме — для контраста) ---
-    out property <color> mark-5: dark ? #7FD98A : #2E7D32;
-    out property <color> mark-4: dark ? #7FB2F0 : #1565C0;
-    out property <color> mark-3: dark ? #F5B871 : #E67700;
-    out property <color> mark-2: dark ? #F0918C : #C62828;
+    out property <color> mark-5: dark ? #7FD98A : LightPalette.on-success-container;
+    out property <color> mark-4: dark ? #7FB2F0 : LightPalette.on-mark-4-container;
+    out property <color> mark-3: dark ? #F5B871 : LightPalette.on-mark-3-container;
+    out property <color> mark-2: dark ? #F0918C : LightPalette.on-mark-2-container;
+    out property <color> success-container: LightPalette.success-container;
+    out property <color> mark-4-container: LightPalette.mark-4-container;
+    out property <color> mark-3-container: LightPalette.mark-3-container;
+    out property <color> mark-2-container: LightPalette.mark-2-container;
 
     // --- Форма (M3 shape scale, строже) ---
     out property <length> radius-s: 8px;

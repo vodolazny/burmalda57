@@ -38,17 +38,20 @@ export component SegmentedButtons inherits Rectangle {
 
     height: 40px;
     border-radius: 20px;
-    border-width: 1px;
+    border-width: Theme.dark ? 1px : 0px;
     border-color: Theme.outline;
+    background: Theme.dark ? transparent : Theme.surface-variant;
     clip: true;
 
     HorizontalLayout {
+        padding: Theme.dark ? 0px : 4px;
+        spacing: Theme.dark ? 0px : 4px;
         for opt[i] in root.options : Rectangle {
             horizontal-stretch: 1;
-            background: i == root.selected ? Theme.secondary-container : transparent;
-            border-top-left-radius: i == 0 ? root.border-radius : 0px;
+            background: i == root.selected ? (Theme.dark ? Theme.secondary-container : Theme.primary-container) : transparent;
+            border-top-left-radius: Theme.dark ? (i == 0 ? root.border-radius : 0px) : 16px;
             border-bottom-left-radius: self.border-top-left-radius;
-            border-top-right-radius: i == root.options.length - 1 ? root.border-radius : 0px;
+            border-top-right-radius: Theme.dark ? (i == root.options.length - 1 ? root.border-radius : 0px) : 16px;
             border-bottom-right-radius: self.border-top-right-radius;
             accessible-role: button;
             accessible-label: opt;
@@ -56,7 +59,7 @@ export component SegmentedButtons inherits Rectangle {
             accessible-action-default => { root.select(i); }
 
             // Разделитель слева (кроме первого и соседей выбранного)
-            if (i > 0 && i != root.selected && (i - 1) != root.selected) : Rectangle {
+            if (Theme.dark && i > 0 && i != root.selected && (i - 1) != root.selected) : Rectangle {
                 x: 0;
                 width: 1px;
                 height: parent.height;
@@ -68,7 +71,7 @@ export component SegmentedButtons inherits Rectangle {
                 text: opt;
                 font-size: 13px;
                 font-weight: i == root.selected ? 700 : 500;
-                color: i == root.selected ? Theme.on-secondary-container : Theme.on-surface;
+                color: i == root.selected ? (Theme.dark ? Theme.on-secondary-container : Theme.on-primary-container) : (Theme.dark ? Theme.on-surface : Theme.on-surface-variant);
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -151,8 +154,8 @@ export component SimStepper inherits Rectangle {
 
     height: 96px;
     border-radius: Theme.radius-m;
-    background: root.fg.transparentize(0.9);
-    border-width: 1px;
+    background: Theme.dark ? root.fg.transparentize(0.9) : mc.container;
+    border-width: Theme.dark ? 1px : 0px;
     border-color: root.fg.transparentize(0.6);
 
     VerticalLayout {

@@ -103,6 +103,13 @@ where
 // ============================================================
 //  Экраны и системные действия
 // ============================================================
+pub(crate) fn update_system_bars(dark: bool) -> Result<(), jni::errors::Error> {
+    with_env(|env, activity| {
+        env.call_method(activity, "updateSystemBars", "(Z)V", &[JValue::Bool(dark.into())])?;
+        Ok(())
+    })
+}
+
 pub(crate) fn launch_login() -> Result<(), jni::errors::Error> {
     with_env(|env, activity| {
         let intent = env.new_object("android/content/Intent", "()V", &[])?;

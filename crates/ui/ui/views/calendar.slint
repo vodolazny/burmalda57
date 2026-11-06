@@ -24,7 +24,7 @@ export component RuCalendar inherits Rectangle {
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
         border-radius: Theme.radius-xl;
-        background: Theme.surface-container-high;
+        background: Theme.dark ? Theme.surface-container-high : Theme.surface-card;
         drop-shadow-blur: 24px;
         drop-shadow-color: Theme.shadow;
         drop-shadow-offset-y: 8px;

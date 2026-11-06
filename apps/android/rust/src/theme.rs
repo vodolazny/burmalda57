@@ -84,6 +84,7 @@ pub(crate) fn apply_system_theme(ui: &AppWindow) {
 
     let theme = ui.global::<Theme>();
     theme.set_system_dark(dark);
+    theme.on_scheme_changed(update_system_bars);
 
     if sdk_int >= 31 {
         theme.set_system_light_palette(read_system_palette(
@@ -99,8 +100,22 @@ pub(crate) fn apply_system_theme(ui: &AppWindow) {
             theme.get_system_dark_palette(),
         ));
         theme.set_has_system_palette(true);
+        if let Some(c) = read_system_color(&mut env, &context, "system_neutral2_200") {
+            theme.set_light_outline_variant(c);
+        }
+        if let Some(c) = read_system_color(&mut env, &context, "system_neutral2_100") {
+            theme.set_light_surface_variant(c);
+            theme.set_light_surface_highest(c);
+        }
     }
     clear_exception(&mut env);
+    update_system_bars(theme.get_dark());
+}
+
+fn update_system_bars(dark: bool) {
+    if let Err(e) = crate::android::update_system_bars(dark) {
+        log::warn!("Unable to update system bar appearance: {e}");
+    }
 }
 
 fn read_system_palette(
@@ -113,7 +128,7 @@ fn read_system_palette(
         let tone = if dark { dark_tone } else { light_tone };
         read_system_color(env, context, &format!("system_{group}_{tone}")).unwrap_or(default)
     };
-    ThemePalette {
+    let mut palette = ThemePalette {
         primary: read_tone("accent1", 600, 200, fallback.primary),
         on_primary: if dark {
             slint::Color::from_rgb_u8(0x20, 0x20, 0x20)
@@ -128,5 +143,18 @@ fn read_system_palette(
         on_surface: read_tone("neutral1", 900, 50, fallback.on_surface),
         on_surface_variant: read_tone("neutral2", 700, 200, fallback.on_surface_variant),
         outline: read_tone("neutral2", 500, 400, fallback.outline),
+    };
+    if !dark {
+        let channels = [palette.primary.red(), palette.primary.green(), palette.primary.blue()];
+        if channels.iter().max().unwrap() - channels.iter().min().unwrap() <= 8 {
+            let graphite = slint::Color::from_rgb_u8(0x1A, 0x1C, 0x1E);
+            let white = slint::Color::from_rgb_u8(0xFF, 0xFF, 0xFF);
+            palette.primary = graphite;
+            palette.primary_container = graphite;
+            palette.on_primary_container = white;
+            palette.secondary_container = graphite;
+            palette.on_secondary_container = white;
+        }
     }
+    palette
 }

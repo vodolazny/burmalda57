@@ -19,6 +19,7 @@ import {
     SubjectGrades as MobileSubjectGrades,
     GradeMark as DesktopGradeMark,
 } from "../../../crates/ui/ui/types.slint";
+import { LightPalette } from "../../../crates/ui/ui/light_palette.slint";
 export { Theme as MobileTheme, Validate as MobileValidate } from "../../../crates/ui/ui/theme.slint";
 export { GradeMath, GradeSimulation } from "../../../crates/ui/ui/grade_math.slint";
 import { GradeMath, GradeSimulation } from "../../../crates/ui/ui/grade_math.slint";
@@ -47,6 +48,7 @@ export struct DesktopSubjectGrades {
 // ============================================================
 export global Theme {
     out property <bool> dark: MobileTheme.dark;
+    out property <int> accent-color: MobileTheme.accent-color;
     out property <color> primary: MobileTheme.primary;
     out property <color> on-primary: MobileTheme.on-primary;
     out property <color> primary-container: MobileTheme.primary-container;
@@ -59,16 +61,17 @@ export global Theme {
     out property <color> outline: MobileTheme.outline;
 
     // ================================================================
-    //  ПРОИЗВОДНЫЕ — считаются из базовых, следуя за Material You.
-    //  Surface tinting: подмешиваем primary для живого ощущения темы.
+    //  Dark elevation stays unchanged; light surfaces use explicit tonal roles.
     // ================================================================
     out property <color> background:                surface;
-    out property <color> surface-container-low:     surface.mix(primary, 0.96);
-    out property <color> surface-container:         surface.mix(primary, 0.91);
-    out property <color> surface-container-high:    surface.mix(primary, 0.86);
-    out property <color> surface-container-highest: surface.mix(primary, 0.82);
-    out property <color> outline-variant:           surface.mix(primary, 0.70);
-    out property <color> nav-bg:                    surface.mix(primary, 0.92);
+    out property <color> surface-card: dark ? surface-container : LightPalette.surface-card;
+    out property <color> surface-variant: dark ? surface.mix(primary, 0.86) : LightPalette.surface-variant(accent-color);
+    out property <color> surface-container-low:     dark ? surface.mix(primary, 0.96) : LightPalette.surface-card;
+    out property <color> surface-container:         dark ? surface.mix(primary, 0.91) : LightPalette.surface-card;
+    out property <color> surface-container-high:    dark ? surface.mix(primary, 0.86) : surface-variant;
+    out property <color> surface-container-highest: dark ? surface.mix(primary, 0.82) : LightPalette.surface-highest(accent-color);
+    out property <color> outline-variant:           dark ? surface.mix(primary, 0.70) : LightPalette.outline-variant(accent-color);
+    out property <color> nav-bg:                    dark ? surface.mix(primary, 0.92) : LightPalette.surface-card;
     out property <color> shadow:             dark ? #00000066 : #0000001F;
 
     // --- Ошибки (M3 error roles) ---
@@ -80,10 +83,15 @@ export global Theme {
     out property <color> primary-2: primary.brighter(0.12);
 
     // --- Цвета оценок (светлее/пастельнее в тёмной теме — для контраста) ---
-    out property <color> mark-5: dark ? #7FD98A : #2E7D32;
-    out property <color> mark-4: dark ? #7FB2F0 : #1565C0;
-    out property <color> mark-3: dark ? #F5B871 : #E67700;
-    out property <color> mark-2: dark ? #F0918C : #C62828;
+    out property <color> mark-5: dark ? #7FD98A : LightPalette.on-success-container;
+    out property <color> mark-4: dark ? #7FB2F0 : LightPalette.on-mark-4-container;
+    out property <color> mark-3: dark ? #F5B871 : LightPalette.on-mark-3-container;
+    out property <color> mark-2: dark ? #F0918C : LightPalette.on-mark-2-container;
+
+    out property <color> success-container: LightPalette.success-container;
+    out property <color> mark-4-container: LightPalette.mark-4-container;
+    out property <color> mark-3-container: LightPalette.mark-3-container;
+    out property <color> mark-2-container: LightPalette.mark-2-container;
 
     // --- Форма (M3 shape scale, строже) ---
     out property <length> radius-s: 8px;
@@ -260,6 +268,11 @@ component MarkColor {
                            : value == 3 ? Theme.mark-3
                            : value >  0 ? Theme.mark-2
                            :              Theme.on-surface-variant;
+    out property <color> container: value >= 5 ? Theme.success-container
+                                  : value == 4 ? Theme.mark-4-container
+                                  : value == 3 ? Theme.mark-3-container
+                                  : value > 0 ? Theme.mark-2-container
+                                  : Theme.surface-variant;
 }
 
 // M3 tonal-жетон оценки. Отдельная фигура — только для оценки.
@@ -275,8 +288,8 @@ component MarkToken inherits Rectangle {
     width: max(root.size, txt.preferred-width + 16px);
     height: root.size;
     border-radius: root.size / 4;
-    background: root.fg.transparentize(0.88);
-    border-width: 1px;
+    background: Theme.dark ? root.fg.transparentize(0.88) : mc.container;
+    border-width: Theme.dark ? 1px : 0px;
     border-color: root.fg.transparentize(0.7);
 
     txt := Text {
@@ -300,7 +313,7 @@ component RecentGradeCard inherits Rectangle {
     width: 132px;
     height: 116px;
     border-radius: Theme.radius-l;
-    background: Theme.surface-container-high;
+    background: Theme.dark ? Theme.surface-container-high : Theme.surface-card;
 
     VerticalLayout {
         padding: 12px;
@@ -484,7 +497,9 @@ component LessonCard inherits Rectangle {
         width: parent.width - 24px;
         height: parent.height - 10px;
         border-radius: Theme.radius-l;
-        background: root.active ? Theme.secondary-container.transparentize(0.55) : Theme.surface-container;
+        background: root.active
+            ? (Theme.dark ? Theme.secondary-container.transparentize(0.55) : Theme.surface-variant)
+            : Theme.surface-container;
         border-width: root.active ? 2px : 0px;
         border-color: Theme.primary;
         clip: true;
@@ -1316,18 +1331,22 @@ component SegmentedButtons inherits Rectangle {
 
     height: 40px;
     border-radius: 20px;
-    border-width: 1px;
+    border-width: Theme.dark ? 1px : 0px;
     border-color: Theme.outline-variant;
+    background: Theme.dark ? transparent : Theme.surface-variant;
     clip: true;
 
     HorizontalLayout {
+        padding: Theme.dark ? 0px : 4px;
+        spacing: Theme.dark ? 0px : 4px;
         for opt[i] in root.options : Rectangle {
             horizontal-stretch: 1;
-            background: i == root.selected ? Theme.secondary-container : (seg-ta.pressed ? Theme.on-surface.transparentize(0.92) : transparent);
+            border-radius: Theme.dark ? 0px : 16px;
+            background: i == root.selected ? (Theme.dark ? Theme.secondary-container : Theme.primary-container) : (seg-ta.pressed ? Theme.on-surface.transparentize(0.92) : transparent);
             animate background { duration: 120ms; }
 
             // Разделитель слева (кроме первого и соседей выбранного)
-            if (i > 0 && i != root.selected && (i - 1) != root.selected) : Rectangle {
+            if (Theme.dark && i > 0 && i != root.selected && (i - 1) != root.selected) : Rectangle {
                 x: 0;
                 width: 1px;
                 height: parent.height;
@@ -1338,7 +1357,7 @@ component SegmentedButtons inherits Rectangle {
                 text: opt;
                 font-size: 13px;
                 font-weight: i == root.selected ? 700 : 500;
-                color: i == root.selected ? Theme.on-secondary-container : Theme.on-surface;
+                color: i == root.selected ? (Theme.dark ? Theme.on-secondary-container : Theme.on-primary-container) : (Theme.dark ? Theme.on-surface : Theme.on-surface-variant);
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -1371,7 +1390,7 @@ component EventSheet inherits Rectangle {
         width: 380px;
         height: card-col.preferred-height;
         border-radius: 16px;
-        background: Theme.surface-container-high;
+        background: Theme.dark ? Theme.surface-container-high : Theme.surface-card;
         border-width: 1px;
         border-color: Theme.outline-variant;
         drop-shadow-blur: 32px;
@@ -2516,11 +2535,14 @@ component GradeSquareCard inherits Rectangle {
     width: 48px;
     height: 52px;
     border-radius: 10px;
-    background: root.value == 5 ? Theme.mark-5.transparentize(0.86)
-        : root.value == 4 ? Theme.mark-4.transparentize(0.86)
-        : root.value == 3 ? Theme.mark-3.transparentize(0.86)
-        : Theme.mark-2.transparentize(0.86);
-    border-width: 1.5px;
+    mc := MarkColor { value: root.value; }
+    background: Theme.dark
+        ? (root.value == 5 ? Theme.mark-5.transparentize(0.86)
+            : root.value == 4 ? Theme.mark-4.transparentize(0.86)
+            : root.value == 3 ? Theme.mark-3.transparentize(0.86)
+            : Theme.mark-2.transparentize(0.86))
+        : mc.container;
+    border-width: Theme.dark ? 1.5px : 0px;
     border-color: root.value == 5 ? Theme.mark-5.transparentize(0.4)
         : root.value == 4 ? Theme.mark-4.transparentize(0.4)
         : root.value == 3 ? Theme.mark-3.transparentize(0.4)
@@ -2597,8 +2619,8 @@ component SimStepper inherits Rectangle {
 
     height: 96px;
     border-radius: Theme.radius-m;
-    background: root.fg.transparentize(0.9);
-    border-width: 1px;
+    background: Theme.dark ? root.fg.transparentize(0.9) : mc.container;
+    border-width: Theme.dark ? 1px : 0px;
     border-color: root.fg.transparentize(0.6);
 
     VerticalLayout {
@@ -3423,8 +3445,8 @@ component GradesView inherits Rectangle {
                                                     width: 36px;
                                                     height: 28px;
                                                     border-radius: 8px;
-                                                    background: mc.fg.transparentize(0.85);
-                                                    border-width: 1px;
+                                                    background: Theme.dark ? mc.fg.transparentize(0.85) : mc.container;
+                                                    border-width: Theme.dark ? 1px : 0px;
                                                     border-color: mc.fg.transparentize(0.65);
                                                     x: (parent.width - self.width) / 2;
                                                     y: (parent.height - self.height) / 2;
@@ -3637,7 +3659,7 @@ component RuCalendar inherits Rectangle {
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
         border-radius: Theme.radius-xl;
-        background: Theme.surface-container-high;
+        background: Theme.dark ? Theme.surface-container-high : Theme.surface-card;
         drop-shadow-blur: 24px;
         drop-shadow-color: Theme.shadow;
         drop-shadow-offset-y: 8px;
@@ -3801,7 +3823,7 @@ component ChildItemCard inherits Rectangle {
 
     height: card-layout.preferred-height + 20px;
     border-radius: Theme.radius-m;
-    background: root.selected ? Theme.primary-container.transparentize(0.4) : (ta.pressed ? Theme.surface-container-highest : Theme.surface-container-high);
+    background: root.selected ? (Theme.dark ? Theme.primary-container.transparentize(0.4) : Theme.surface-variant) : (ta.pressed ? Theme.surface-container-highest : Theme.surface-container-high);
     border-width: root.selected ? 2px : 1px;
     border-color: root.selected ? Theme.primary : Theme.outline-variant;
     animate background { duration: 120ms; }

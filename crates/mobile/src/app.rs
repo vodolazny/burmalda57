@@ -51,6 +51,16 @@ pub(crate) struct App {
 
 static APP: OnceLock<Arc<App>> = OnceLock::new();
 
+/// Re-read the platform palette after an Android configuration change.
+pub fn refresh_theme() {
+    let _ = slint::invoke_from_event_loop(|| {
+        let ui = APP_WEAK.lock().unwrap().as_ref().and_then(|w| w.upgrade());
+        if let (Some(app), Some(ui)) = (APP.get(), ui) {
+            app.platform.apply_theme(&ui);
+        }
+    });
+}
+
 // ============================================================
 //  Точка входа
 // ============================================================

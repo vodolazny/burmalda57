@@ -1,0 +1,50 @@
+// Explicit M3 light roles. Accent order: purple, blue, green, orange, monochrome.
+// Tone 95 backgrounds, white cards, tone 90–92 inset surfaces.
+export global LightPalette {
+    out property <color> surface-card: #FFFFFF;
+    out property <color> success-container: #D4F5DC;
+    out property <color> on-success-container: #0D652D;
+    out property <color> mark-4-container: #D3E4FF;
+    out property <color> on-mark-4-container: #1558A6;
+    out property <color> mark-3-container: #FFE2B8;
+    out property <color> on-mark-3-container: #8A4B00;
+    out property <color> mark-2-container: #FFDAD6;
+    out property <color> on-mark-2-container: #B3261E;
+
+    public pure function background(accent: int) -> color {
+        return accent == 1 ? #F2F4F7 : accent == 2 ? #F1F5F0
+             : accent == 3 ? #F8F2ED : accent == 4 ? #F2F3F5 : #F3F2F8;
+    }
+    public pure function surface-variant(accent: int) -> color {
+        return accent == 1 ? #E7EBF2 : accent == 2 ? #E5ECE4
+             : accent == 3 ? #F0E7DF : accent == 4 ? #E7E8EB : #EAE8F0;
+    }
+    public pure function surface-highest(accent: int) -> color {
+        return accent == 1 ? #DFE4EC : accent == 2 ? #DEE6DD
+             : accent == 3 ? #E9E0D8 : accent == 4 ? #E0E2E5 : #E3E0E9;
+    }
+    public pure function primary(accent: int) -> color {
+        return accent == 1 ? #0B57D0 : accent == 2 ? #1B6D36
+             : accent == 3 ? #8F4C00 : accent == 4 ? #1A1C1E : #6750A4;
+    }
+    public pure function primary-container(accent: int) -> color {
+        return accent == 1 ? #D3E4FF : accent == 2 ? #C4EED0
+             : accent == 3 ? #FFDCC2 : accent == 4 ? #1A1C1E : #EADDFF;
+    }
+    public pure function on-primary-container(accent: int) -> color {
+        return accent == 1 ? #001C38 : accent == 2 ? #00210A
+             : accent == 3 ? #2E1500 : accent == 4 ? #FFFFFF : #21005D;
+    }
+    public pure function on-surface(accent: int) -> color {
+        return accent == 1 ? #1A1C20 : accent == 2 ? #191D19
+             : accent == 3 ? #211B16 : accent == 4 ? #1A1C1E : #1C1B1F;
+    }
+    public pure function on-surface-variant(accent: int) -> color {
+        return accent == 1 ? #44474F : accent == 2 ? #424940
+             : accent == 3 ? #50453B : accent == 4 ? #45474A : #49454F;
+    }
+    public pure function outline-variant(accent: int) -> color {
+        return accent == 1 ? #C4C6D0 : accent == 2 ? #C2C9BE
+             : accent == 3 ? #D3C4B7 : accent == 4 ? #C5C7CB : #CBC4D0;
+    }
+}

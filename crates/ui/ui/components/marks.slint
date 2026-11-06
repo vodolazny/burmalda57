@@ -7,6 +7,11 @@ export component MarkColor {
                            : value == 3 ? Theme.mark-3
                            : value >  0 ? Theme.mark-2
                            :              Theme.on-surface-variant;
+    out property <color> container: value >= 5 ? Theme.success-container
+                                  : value == 4 ? Theme.mark-4-container
+                                  : value == 3 ? Theme.mark-3-container
+                                  : value > 0 ? Theme.mark-2-container
+                                  : Theme.surface-variant;
 }
 
 // M3 tonal-жетон оценки. Отдельная фигура — только для оценки.
@@ -23,8 +28,8 @@ export component MarkToken inherits Rectangle {
     width: root.size;
     height: root.size;
     border-radius: root.size / 4;
-    background: root.fg.transparentize(0.88);
-    border-width: 1px;
+    background: Theme.dark ? root.fg.transparentize(0.88) : mc.container;
+    border-width: Theme.dark ? 1px : 0px;
     border-color: root.fg.transparentize(0.7);
 
     Text {
@@ -48,7 +53,7 @@ export component MarkMicroCard inherits Rectangle {
     width: 46px;
     height: 56px;
     border-radius: Theme.radius-s;
-    background: Theme.surface-container-high;
+    background: Theme.dark ? Theme.surface-container-high : mc.container;
 
     mc := MarkColor { value: root.value; }
 
@@ -102,8 +107,8 @@ export component FinalCell inherits VerticalLayout {
     Rectangle {
         height: 34px;
         border-radius: 10px;
-        background: mc.fg.transparentize(0.86);
-        border-width: 1px;
+        background: Theme.dark ? mc.fg.transparentize(0.86) : mc.container;
+        border-width: Theme.dark ? 1px : 0px;
         border-color: mc.fg.transparentize(0.7);
         Text {
             letter-spacing: Theme.tracking;
