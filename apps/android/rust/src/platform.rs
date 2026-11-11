@@ -66,11 +66,18 @@ impl Platform for AndroidPlatform {
         }
     }
 
-    fn package_ext(&self) -> &'static str {
-        ".apk"
+    fn github_package_ext(&self) -> Option<&'static str> {
+        (!cfg!(feature = "rustore")).then_some(".apk")
     }
 
     fn app_version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    #[cfg(feature = "rustore")]
+    fn privacy_policy_url(&self) -> &'static str {
+        option_env!("RUSTORE_PRIVACY_POLICY_URL")
+            .unwrap_or_default()
+            .trim()
     }
 }

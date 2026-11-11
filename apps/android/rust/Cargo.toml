@@ -1,6 +1,6 @@
 [package]
 name = "burmalda57-android"
-version = "1.8.2"
+version = "1.8.3"
 edition = "2021"
 license = "Apache-2.0"
 
@@ -9,8 +9,13 @@ name = "burmalda57"
 # cdylib — .so для Android
 crate-type = ["cdylib"]
 
+[features]
+default = ["sentry"]
+rustore = ["burmalda57-ui/rustore"]
+sentry = ["dep:sentry"]
+
 [dependencies]
-sentry = { version = "0.48.4", default-features = false, features = [
+sentry = { version = "0.48.4", optional = true, default-features = false, features = [
     "backtrace", "contexts", "panic", "ureq", "rustls"
 ] }
 

@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 
+[features]
+rustore = []
+
 [dependencies]
 # Общий UI не выбирает backend/renderer: их включают оболочки приложений.
 slint = { version = "=1.18.1", default-features = false, features = ["compat-1-2", "std"] }

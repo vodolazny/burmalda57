@@ -2350,6 +2350,27 @@ component ProfileView inherits Rectangle {
                                     font-size: 12px;
                                     color: Theme.on-surface-variant;
                                     horizontal-alignment: left;
+                                    wrap: word-wrap;
+                                }
+                            }
+
+                            VerticalLayout {
+                                alignment: center;
+                                badge := TouchArea {
+                                    width: 104px;
+                                    height: 48px;
+                                    mouse-cursor: pointer;
+                                    accessible-role: button;
+                                    accessible-label: "Made with Slint";
+                                    accessible-action-default => { badge.clicked(); }
+                                    clicked => { root.open-url("https://slint.dev/"); }
+
+                                    Image {
+                                        width: 100%;
+                                        height: 100%;
+                                        source: @image-url("../assets/MadeWithSlint-logo-whitebg.png");
+                                        image-fit: contain;
+                                    }
                                 }
                             }
                         }

@@ -86,8 +86,8 @@ impl Platform for IosPlatform {
         crate::ios::notify_show(id, title, text);
     }
 
-    fn package_ext(&self) -> &'static str {
-        ".ipa"
+    fn github_package_ext(&self) -> Option<&'static str> {
+        Some(".ipa")
     }
 
     fn app_version(&self) -> &'static str {

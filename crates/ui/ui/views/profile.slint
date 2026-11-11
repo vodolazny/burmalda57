@@ -17,6 +17,7 @@ export component ProfileView inherits Rectangle {
     in property <bool> is-parent: false;
     in property <string> parent-name: "";
     in property <[ChildItem]> children-list;
+    in property <string> privacy-policy-url;
     callback logout();
     callback pick-avatar();
     callback open-url(string);
@@ -102,7 +103,7 @@ export component ProfileView inherits Rectangle {
                     }
                     Rectangle { height: 1px; background: Theme.outline-variant; }
                     InfoRow { label: "Школа"; value: root.school-name; }
-                    if root.is-parent && root.parent-name != "" : InfoRow { label: "��одитель"; value: root.parent-name; }
+                    if root.is-parent && root.parent-name != "" : InfoRow { label: "Родитель"; value: root.parent-name; }
                 }
             }
 
@@ -326,6 +327,19 @@ export component ProfileView inherits Rectangle {
                         horizontal-alignment: center;
                     }
                     clicked => { root.open-url("https://github.com/vodolazny/burmalda57"); }
+                }
+                if root.privacy-policy-url != "" : TouchArea {
+                    height: 36px;
+                    Text {
+                        width: 100%;
+                        height: 100%;
+                        text: "Политика конфиденциальности";
+                        font-size: 13px;
+                        color: Theme.primary;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    clicked => { root.open-url(root.privacy-policy-url); }
                 }
             }
         }

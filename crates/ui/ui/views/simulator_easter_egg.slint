@@ -1,0 +1,59 @@
+import { Theme } from "../theme.slint";
+import { MaterialButton } from "../components/buttons.slint";
+
+export component SimulatorEasterEgg inherits Rectangle {
+    private property <bool> open;
+
+    public function added-two(count: int) {
+        if count == 67 { root.open = true; }
+    }
+
+    public function dismiss() {
+        root.open = false;
+    }
+
+    if root.open : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #000000.transparentize(0.25);
+
+        TouchArea {
+            clicked => { root.dismiss(); }
+        }
+
+        dialog := Rectangle {
+            width: max(0px, min(360px, parent.width - 32px));
+            height: max(0px, min(content.preferred-height, parent.height - 32px));
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-radius: Theme.radius-xl;
+            background: Theme.surface-container;
+            border-width: 1px;
+            border-color: Theme.outline-variant;
+            clip: true;
+
+            TouchArea { }
+
+            content := VerticalLayout {
+                padding: 16px;
+                spacing: 16px;
+
+                Image {
+                    source: @image-url("../../assets/image.png");
+                    min-width: 0px;
+                    min-height: 0px;
+                    preferred-height: max(0px, dialog.width - 32px) * self.source.height / max(1, self.source.width);
+                    vertical-stretch: 1;
+                    image-fit: contain;
+                }
+
+                MaterialButton {
+                    height: 44px;
+                    border-radius: 22px;
+                    text: "Че?!?!";
+                    clicked => { root.dismiss(); }
+                }
+            }
+        }
+    }
+}

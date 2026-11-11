@@ -80,11 +80,11 @@ fn version_in(text: &str) -> Option<semver::Version> {
 }
 
 /// Ссылка на пакет из релиза; без подходящего файла — страница релиза.
-fn download_url(rel: GhRelease, pkg_ext: &str) -> String {
+fn download_url(rel: GhRelease, matches_asset: impl Fn(&str) -> bool) -> String {
     rel.assets
-        .iter()
-        .find(|a| a.name.ends_with(pkg_ext))
-        .map(|a| a.browser_download_url.clone())
+        .into_iter()
+        .find(|a| matches_asset(&a.name))
+        .map(|a| a.browser_download_url)
         .unwrap_or(rel.html_url)
 }
 
@@ -101,7 +101,9 @@ fn parse_android_latest(raw: &str, current: &str) -> Option<UpdateInfo> {
     }
     Some(UpdateInfo {
         version: latest,
-        url: download_url(rel, ".apk"),
+        url: download_url(rel, |name| {
+            name.ends_with(".apk") && !name.starts_with("burmalda57-rustore-")
+        }),
     })
 }
 
@@ -122,7 +124,7 @@ fn parse_ios_latest(raw: &str, current: &str) -> Option<UpdateInfo> {
     }
     Some(UpdateInfo {
         version: latest,
-        url: download_url(rel, ".ipa"),
+        url: download_url(rel, |name| name.ends_with(".ipa")),
     })
 }
 
@@ -145,6 +147,7 @@ mod tests {
         "name": "burmalda57 android-v1.8.0",
         "html_url": "https://x/android-1.8.0",
         "assets": [
+            {"name": "burmalda57-rustore-1.8.0.apk", "browser_download_url": "https://x/rustore.apk"},
             {"name": "burmalda57-1.8.0.apk", "browser_download_url": "https://x/app-1.8.0.apk"}
         ]
     }"#;

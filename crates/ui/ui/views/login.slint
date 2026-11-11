@@ -5,8 +5,10 @@ import { MaterialButton } from "../components/buttons.slint";
 export component LoginScreen inherits Rectangle {
     in property <string> login-error;
     in property <bool> logging-in;
+    in property <bool> show-privacy-policy;
     callback login-requested();
     callback demo-requested();
+    callback open-privacy-policy();
     background: Theme.background;
     clip: true;
 
@@ -201,6 +203,20 @@ export component LoginScreen inherits Rectangle {
             demo-ta := TouchArea {
                 clicked => { root.demo-requested(); }
             }
+        }
+
+        if root.show-privacy-policy : TouchArea {
+            height: 36px;
+            Text {
+                width: 100%;
+                height: 100%;
+                text: "Политика конфиденциальности";
+                font-size: 13px;
+                color: Theme.primary;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            clicked => { root.open-privacy-policy(); }
         }
     }
 }

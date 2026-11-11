@@ -46,6 +46,7 @@ export component AppWindow inherits Window {
     in property <bool> loading;
     in property <string> login-error;
     in property <bool> logging-in;
+    in property <string> privacy-policy-url;
     // --- Проверка обновлений ---
     in property <bool> update-available: false;
     in property <string> update-version;
@@ -124,8 +125,10 @@ export component AppWindow inherits Window {
         height: 100%;
         login-error: root.login-error;
         logging-in: root.logging-in;
+        show-privacy-policy: root.privacy-policy-url != "";
         login-requested => { root.login-requested(); }
         demo-requested => { root.demo-requested(); }
+        open-privacy-policy => { root.open-url(root.privacy-policy-url); }
     }
 
     if root.logged-in : VerticalLayout {
@@ -265,6 +268,7 @@ export component AppWindow inherits Window {
                 is-parent: root.is-parent;
                 parent-name: root.parent-name;
                 children-list: root.children-list;
+                privacy-policy-url: root.privacy-policy-url;
                 logout => { root.logout(); }
                 pick-avatar => { root.pick-avatar(); }
                 open-url(u) => { root.open-url(u); }

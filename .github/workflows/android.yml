@@ -1,8 +1,7 @@
 name: Android (APK)
 
 # main/PR — debug APK в артефактах.
-# Тег android-v* — подписанный release APK, который публикуется в GitHub Releases
-# и становится «latest» для встроенной проверки обновлений приложения.
+# Тег android-v* — подписанные APK для GitHub и RuStore в одном GitHub Release.
 on:
   workflow_dispatch:
   push:
@@ -37,12 +36,12 @@ env:
 
 jobs:
   build:
-    name: Build APK
+    name: Build APK (${{ matrix.variant }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
-      # DSN вшивается в бинарник при компиляции; без секрета Sentry выключен
-      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+    strategy:
+      matrix:
+        variant: ${{ fromJSON(startsWith(github.ref, 'refs/tags/android-v') && '["release", "rustore"]' || '["debug"]') }}
     steps:
       - uses: actions/checkout@v5
 
@@ -53,9 +52,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ". -> target"
+          workspaces: ". -> ${{ matrix.variant == 'rustore' && 'target/rustore' || 'target' }}"
+          key: android-${{ matrix.variant == 'rustore' && 'rustore' || 'github' }}
 
       - name: Проверки ядра и хранилища
+        if: matrix.variant != 'rustore'
         run: cargo test --locked -p burmalda57-core
 
       - name: JDK 17
@@ -82,19 +83,10 @@ jobs:
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Определить вариант сборки
-        id: variant
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/android-v* ]]; then
-            echo "value=release" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=debug" >> "$GITHUB_OUTPUT"
-          fi
-
       # Версия в теге должна совпадать и с versionName, и с версией Rust-крейта:
       # по CARGO_PKG_VERSION приложение решает, показывать ли обновление.
       - name: Проверить версию тега
-        if: steps.variant.outputs.value == 'release'
+        if: matrix.variant != 'debug'
         working-directory: apps/android
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#android-v}"
@@ -107,7 +99,7 @@ jobs:
           fi
 
       - name: Подготовить keystore
-        if: steps.variant.outputs.value == 'release'
+        if: matrix.variant != 'debug'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -139,19 +131,22 @@ jobs:
           keyPassword=$KEY_PASSWORD
           EOF
 
-      - name: Сборка debug APK
-        if: steps.variant.outputs.value == 'debug'
+      - name: Проверки Android
+        if: matrix.variant != 'rustore'
         working-directory: apps/android
-        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Сборка release APK
-        if: steps.variant.outputs.value == 'release'
+      - name: Сборка APK
         working-directory: apps/android
-        run: ./gradlew :app:testDebugUnitTest :app:assembleRelease --no-daemon --stacktrace
-
-      - name: Проверить пакет APK и подпись
         env:
-          VARIANT: ${{ steps.variant.outputs.value }}
+          VARIANT: ${{ matrix.variant }}
+          SENTRY_DSN: ${{ matrix.variant != 'rustore' && secrets.SENTRY_DSN || '' }}
+          RUSTORE_PRIVACY_POLICY_URL: ${{ vars.RUSTORE_PRIVACY_POLICY_URL }}
+        run: ./gradlew ":app:assemble${VARIANT^}" --no-daemon --stacktrace
+
+      - name: Проверить пакет APK, подпись и ресурсы
+        env:
+          VARIANT: ${{ matrix.variant }}
         run: |
           set -euo pipefail
           APK="apps/android/app/build/outputs/apk/$VARIANT/app-$VARIANT.apk"
@@ -162,12 +157,24 @@ jobs:
           BADGING=$("$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK")
           printf '%s\n' "$BADGING" | grep -F "package: name='$EXPECTED_PACKAGE'"
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs "$APK"
+          python3 - "$APK" "$VARIANT" <<'PY'
+          from pathlib import Path
+          import sys
+          from zipfile import ZipFile
+
+          apk, variant = sys.argv[1:]
+          with ZipFile(apk) as archive:
+              library = archive.read("lib/arm64-v8a/libburmalda57.so")
+          image = Path("crates/ui/assets/image.png").read_bytes()
+          if (image in library) != (variant != "rustore"):
+              raise SystemExit(f"Неверный состав ресурсов в APK варианта {variant}")
+          PY
 
       - name: Артефакт APK
         uses: actions/upload-artifact@v4
         with:
-          name: burmalda57-${{ steps.variant.outputs.value }}-apk
-          path: apps/android/app/build/outputs/apk/${{ steps.variant.outputs.value }}/app-${{ steps.variant.outputs.value }}.apk
+          name: burmalda57-${{ matrix.variant }}-apk
+          path: apps/android/app/build/outputs/apk/${{ matrix.variant }}/app-${{ matrix.variant }}.apk
           if-no-files-found: error
 
   release:
@@ -178,19 +185,26 @@ jobs:
     permissions:
       contents: write # создание релиза и загрузка .apk
     steps:
-      - name: Скачать APK
+      - name: Скачать APK для GitHub
         uses: actions/download-artifact@v4
         with:
           name: burmalda57-release-apk
           path: dist
 
-      - name: Подготовить имя ассета
+      - name: Скачать APK для RuStore
+        uses: actions/download-artifact@v4
+        with:
+          name: burmalda57-rustore-apk
+          path: dist
+
+      - name: Подготовить имена APK
+        id: assets
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#android-v}"
-          APK=$(find dist -name '*.apk' -type f | head -n1)
-          mv "$APK" "dist/burmalda57-${VERSION}.apk"
-          ls -lh dist
+          mv dist/app-release.apk "dist/burmalda57-${VERSION}.apk"
+          mv dist/app-rustore.apk "dist/burmalda57-rustore-${VERSION}.apk"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
@@ -199,5 +213,12 @@ jobs:
           name: burmalda57 ${{ github.ref_name }}
           generate_release_notes: true
           make_latest: true
-          files: dist/*.apk
+          body: |
+            Для установки из GitHub скачайте `burmalda57-${{ steps.assets.outputs.version }}.apk`.
+            Файл `burmalda57-rustore-${{ steps.assets.outputs.version }}.apk` подготовлен для RuStore.
+          # Старые версии приложения скачивают первый APK из релиза.
+          preserve_order: true
+          files: |
+            dist/burmalda57-${{ steps.assets.outputs.version }}.apk
+            dist/burmalda57-rustore-${{ steps.assets.outputs.version }}.apk
           fail_on_unmatched_files: true

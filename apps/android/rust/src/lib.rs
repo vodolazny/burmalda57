@@ -6,8 +6,6 @@ mod keystore;
 mod platform;
 mod theme;
 
-use std::ffi::CStr;
-use std::os::raw::c_char;
 use std::sync::Arc;
 
 use jni::objects::{JByteArray, JClass, JObject, JString};
@@ -15,20 +13,17 @@ use jni::JNIEnv;
 
 use burmalda57_mobile::Platform;
 
-// DSN задаётся при сборке; без переменной крашлитика отключена
-const SENTRY_DSN: Option<&str> = option_env!("SENTRY_DSN");
-
-// ============================================================
-//  ТОЧКА ВХОДА ANDROID (Rust владеет приложением)
-// ============================================================
-#[no_mangle]
-fn android_main(app: slint::android::AndroidApp) {
-    let _guard = sentry::init((SENTRY_DSN, sentry::ClientOptions {
-        release: sentry::release_name!(),
-        debug: false,
-        send_default_pii: false, // данные ученика — PII не отправляем
-        ..Default::default()
-    }));
+#[cfg(all(feature = "sentry", not(feature = "rustore")))]
+fn init_sentry() -> sentry::ClientInitGuard {
+    let guard = sentry::init((
+        option_env!("SENTRY_DSN"),
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            debug: false,
+            send_default_pii: false,
+            ..Default::default()
+        },
+    ));
     if let Some(_model) = get_android_prop("ro.product.model") {
         sentry::configure_scope(|scope| {
             // 1. Контекст устройства (Brand & Model)
@@ -62,6 +57,17 @@ fn android_main(app: slint::android::AndroidApp) {
             client.flush(Some(std::time::Duration::from_secs(5))); // блокируемся, пока отправит
         }
     }));
+    guard
+}
+
+// ============================================================
+//  ТОЧКА ВХОДА ANDROID (Rust владеет приложением)
+// ============================================================
+#[no_mangle]
+fn android_main(app: slint::android::AndroidApp) {
+    #[cfg(all(feature = "sentry", not(feature = "rustore")))]
+    let _guard = init_sentry();
+
     android_logger::init_once(
         android_logger::Config::default()
             .with_max_level(log::LevelFilter::Warn)
@@ -167,13 +173,17 @@ pub extern "C" fn Java_ru_burmalda_journal_GradesWorker_nativePoll(
 }
 
 // для удобства отладки отправляем модель устройства
+#[cfg(all(feature = "sentry", not(feature = "rustore")))]
 fn get_android_prop(name: &str) -> Option<String> {
+    use std::ffi::{CStr, CString};
+    use std::os::raw::c_char;
+
     extern "C" {
         fn __system_property_get(name: *const c_char, value: *mut c_char) -> i32;
     }
 
     let mut buf = [0u8; 92];
-    let c_name = std::ffi::CString::new(name).ok()?;
+    let c_name = CString::new(name).ok()?;
     let len = unsafe { __system_property_get(c_name.as_ptr(), buf.as_mut_ptr() as *mut c_char) };
 
     if len > 0 {

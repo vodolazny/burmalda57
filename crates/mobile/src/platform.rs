@@ -27,8 +27,12 @@ pub trait Platform: Send + Sync + 'static {
     fn shutdown_notifications(&self);
     fn show_notification(&self, id: i32, title: &str, text: &str);
 
-    /// ".apk" или ".ipa" — что искать в релизе GitHub.
-    fn package_ext(&self) -> &'static str;
+    /// Расширение файла в GitHub Releases, если этот канал обновляется через GitHub.
+    fn github_package_ext(&self) -> Option<&'static str>;
     /// Версия приложения (CARGO_PKG_VERSION оболочки, не mobile).
     fn app_version(&self) -> &'static str;
+
+    fn privacy_policy_url(&self) -> &'static str {
+        ""
+    }
 }

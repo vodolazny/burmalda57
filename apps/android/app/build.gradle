@@ -3,6 +3,11 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+abstract class CargoNdkBuild extends Exec {
+    @OutputDirectory
+    abstract DirectoryProperty getJniLibsDirectory()
+}
+
 def keystoreProps = new Properties()
 def keystorePropsFile = rootProject.file("keystore.properties")
 def hasKeystore = keystorePropsFile.exists()
@@ -18,14 +23,16 @@ android {
         applicationId 'ru.burmalda.journal'
         minSdk 26
         targetSdk 34
-        versionCode 11
-        versionName '1.8.2'
+        versionCode 12
+        versionName '1.8.3'
         manifestPlaceholders = [appLabel: 'Бурмалда57']
         ndk {
             abiFilters 'arm64-v8a'
         }
     }
 
+    // Старые локальные сборки могли оставить .so в src/main/jniLibs.
+    sourceSets.main.jniLibs.setSrcDirs([])
 
     signingConfigs {
         if (hasKeystore) {
@@ -55,6 +62,10 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        rustore {
+            initWith release
+            matchingFallbacks = ['release']
+        }
     }
 
     compileOptions {
@@ -75,35 +86,40 @@ dependencies {
 //  Сборка Rust .so через cargo-ndk перед упаковкой APK
 // ====================================================================
 def rustDir = file("${rootDir}/rust")
-def jniLibsDir = file("${projectDir}/src/main/jniLibs")
+def sdkDir = System.getenv('ANDROID_HOME') ?: System.getenv('ANDROID_SDK_ROOT') ?: '/opt/android-sdk'
+def ndkDir = System.getenv('ANDROID_NDK_HOME') ?: System.getenv('ANDROID_NDK_ROOT') ?: "${sdkDir}/ndk/29.0.14206865"
+def buildToolsVer = '34.0.0'
 
-tasks.register('cargoNdkBuild', Exec) {
-    workingDir rustDir
-    // собираем только под arm64
-    commandLine 'cargo', 'ndk',
-        '-t', 'arm64-v8a',
-        '-o', jniLibsDir.absolutePath,
-        'build', '--release',
-        '-p', 'burmalda57-android'
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        def rustore = variant.buildType == 'rustore'
+        def cargoBuild = tasks.register("cargoNdk${variant.name.capitalize()}", CargoNdkBuild) {
+            workingDir rustDir
+            // Cargo сам отслеживает исходники, фичи и переменные окружения.
+            outputs.upToDateWhen { false }
 
-    // Пути берём из окружения (см. README), захардкоженные — только фолбэк
-    def sdkDir = System.getenv('ANDROID_HOME') ?: System.getenv('ANDROID_SDK_ROOT') ?: '/opt/android-sdk'
-    def ndkDir = System.getenv('ANDROID_NDK_HOME') ?: System.getenv('ANDROID_NDK_ROOT') ?: "${sdkDir}/ndk/29.0.14206865"
-    def buildToolsVer = '34.0.0'
+            environment 'ANDROID_HOME',                sdkDir
+            environment 'ANDROID_NDK_HOME',            ndkDir
+            environment 'ANDROID_NDK_ROOT',            ndkDir
+            environment 'ANDROID_JAR',                 "${sdkDir}/platforms/android-34/android.jar"
+            environment 'ANDROID_BUILD_TOOLS_VERSION', buildToolsVer
+            environment 'ANDROID_D8_JAR',              "${sdkDir}/build-tools/${buildToolsVer}/lib/d8.jar"
+            environment 'JAVA_HOME',                   System.getenv('JAVA_HOME') ?: '/usr/lib/jvm/java-17-openjdk'
 
-    environment 'ANDROID_HOME',                sdkDir
-    environment 'ANDROID_NDK_HOME',            ndkDir
-    environment 'ANDROID_NDK_ROOT',            ndkDir
-    environment 'ANDROID_JAR',                 "${sdkDir}/platforms/android-34/android.jar"
-    environment 'ANDROID_BUILD_TOOLS_VERSION', buildToolsVer
-    environment 'ANDROID_D8_JAR',              "${sdkDir}/build-tools/${buildToolsVer}/lib/d8.jar"
-    environment 'JAVA_HOME',                   System.getenv('JAVA_HOME') ?: '/usr/lib/jvm/java-17-openjdk'
-}
+            if (rustore) {
+                // cargo-ndk копирует .so из target после сборки.
+                environment 'CARGO_TARGET_DIR', rootProject.file('../../target/rustore').absolutePath
+            }
 
-tasks.named('preBuild').configure {
-    dependsOn 'cargoNdkBuild'
-}
-
-tasks.named('clean').configure {
-    doFirst { delete jniLibsDir }
+            doFirst {
+                commandLine 'cargo', 'ndk', '-t', 'arm64-v8a',
+                    '-o', jniLibsDirectory.get().asFile.absolutePath,
+                    'build', '--locked', '--release', '-p', 'burmalda57-android'
+                if (rustore) {
+                    args '--no-default-features', '--features', 'rustore'
+                }
+            }
+        }
+        variant.sources.jniLibs.addGeneratedSourceDirectory(cargoBuild) { it.jniLibsDirectory }
+    }
 }

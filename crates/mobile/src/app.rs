@@ -69,6 +69,7 @@ pub fn run_app(
     storage_path: String,
 ) -> Result<(), slint::PlatformError> {
     let ui = AppWindow::new()?;
+    ui.set_privacy_policy_url(platform.privacy_policy_url().into());
     *APP_WEAK.lock().unwrap() = Some(ui.as_weak());
 
     let store = FileStore::new(storage_path.clone(), platform.clone());
@@ -747,19 +748,18 @@ pub fn set_avatar_bytes(bytes: &[u8]) {
 }
 
 fn check_update(app: &Arc<App>) {
+    let Some(pkg_ext) = app.platform.github_package_ext() else {
+        return;
+    };
     let spawner = app.clone();
     let task = app.clone();
     spawner.http.spawn(async move {
-        let request = update::request(task.platform.package_ext());
+        let request = update::request(pkg_ext);
         let Ok(resp) = task.http.execute(&request).await else {
             return;
         };
         let raw = String::from_utf8_lossy(&resp.body).to_string();
-        if let Some(info) = update::parse_update(
-            &raw,
-            task.platform.app_version(),
-            task.platform.package_ext(),
-        ) {
+        if let Some(info) = update::parse_update(&raw, task.platform.app_version(), pkg_ext) {
             log::info!("Доступно обновление {}", info.version);
             ui_bridge::apply_update(info.version, info.url);
         }
