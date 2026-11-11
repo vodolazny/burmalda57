@@ -171,20 +171,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
    $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs \
      app/build/outputs/apk/release/app-release.apk
    ```
-
-### Публикация в RuStore
-
-Тег `android-vX.Y.Z` публикует два подписанных файла в GitHub Releases. У них один пакет `ru.burmalda.journal` и один ключ подписи.
-
-- `burmalda57-X.Y.Z.apk` — сборка для GitHub с проверкой обновлений через GitHub Releases.
-- `burmalda57-rustore-X.Y.Z.apk` — файл для загрузки в RuStore Консоль. Пасхалка, её изображение и Sentry исключены при компиляции. Обновления доставляет RuStore.
-
-Локальная задача для RuStore — `./gradlew :app:assembleRustore`. Файл появится в `app/build/outputs/apk/rustore/app-rustore.apk` при настроенной подписи.
-
-1. Опубликуй политику конфиденциальности на русском. Укажи категории и цели обработки данных, сроки хранения, порядок удаления и контакт ответственного. Добавь публичный URL в переменную репозитория `RUSTORE_PRIVACY_POLICY_URL` (Settings → Secrets and variables → Actions → Variables) до сборки. Та же переменная окружения работает при локальной сборке. Ссылка появится на экране входа и в профиле. [Требования RuStore к политике](https://www.rustore.ru/help/developers/publishing-and-verifying-apps/requirement-apps#51-политика-конфиденциальности).
-2. В RuStore Консоли укажи ту же ссылку, заполни карточку, контакты, возрастную маркировку и раздел «Безопасность данных пользователя». Добавь иконку 512 × 512 px и минимум три скриншота с телефона в демо-режиме. В описании укажи, что это неофициальный клиент дневника Орловской области. [Заполнение карточки](https://www.rustore.ru/help/developers/publishing-and-verifying-apps/app-publication).
-3. Загрузи `burmalda57-rustore-X.Y.Z.apk`. В комментарии модератору укажи «На экране входа нажмите „Демо-режим“, чтобы открыть дневник, оценки и профиль без учётной записи Госуслуг». [Требования к доступу для проверки](https://www.rustore.ru/help/developers/publishing-and-verifying-apps/requirement-apps#84-специальные-требования).
-
 ---
 
 ## 🧯 Отключить Sentry
