@@ -386,7 +386,9 @@ export component LessonCard inherits Rectangle {
                 max-height: self.min-height;
                 animate min-height { duration: 200ms; easing: ease-in-out; }
 
-                details-inner := VerticalLayout {
+                // GridLayout измеряет условные строки по ширине колонки,
+                // поэтому высота деталей учитывает переносы темы и ДЗ.
+                details-inner := GridLayout {
                     x: 0;
                     y: 0;
                     width: parent.width;
@@ -395,12 +397,16 @@ export component LessonCard inherits Rectangle {
                     spacing: 10px;
 
                     Rectangle {
+                        row: 0;
+                        col: 0;
                         height: 1px;
                         background: Theme.on-surface-variant.transparentize(0.88);
                     }
 
                     // Порядок внутри: Тема → ДЗ → Заметка
                     if root.has-topic : DetailRow {
+                        row: 1;
+                        col: 0;
                         label: "Тема урока";
                         value: root.topic;
                         icon: "M4 7 h16 M4 12 h16 M4 17 h11";
@@ -408,12 +414,16 @@ export component LessonCard inherits Rectangle {
                     // Нет темы — говорим только про тему. Раньше один общий
                     // текст на два поля читался как «ДЗ нет», даже когда ДЗ было.
                     if !root.has-topic : Text {
+                        row: 1;
+                        col: 0;
                         letter-spacing: Theme.tracking;
                         text: "Тема урока не указана";
                         font-size: 13px;
                         color: Theme.dark ? Theme.on-surface-variant.transparentize(0.25) : Theme.on-surface-variant;
                     }
                     if root.has-hw : HorizontalLayout {
+                        row: 2;
+                        col: 0;
                         spacing: 10px;
                         DetailRow {
                             horizontal-stretch: 1;
@@ -456,6 +466,8 @@ export component LessonCard inherits Rectangle {
                     }
                     // ДЗ нет — отдельная строка ровно про ДЗ, независимо от темы
                     if !root.has-hw : Text {
+                        row: 2;
+                        col: 0;
                         letter-spacing: Theme.tracking;
                         text: "Домашнее задание не указано";
                         font-size: 13px;
@@ -464,6 +476,8 @@ export component LessonCard inherits Rectangle {
 
                     // --- Заметка (локальная, inline-редактирование с autosave) ---
                     VerticalLayout {
+                        row: 3;
+                        col: 0;
                         spacing: 6px;
 
                         HorizontalLayout {
