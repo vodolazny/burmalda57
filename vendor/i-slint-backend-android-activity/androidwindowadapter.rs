@@ -6,7 +6,7 @@
 use super::*;
 use crate::javahelper::{JavaHelper, print_jni_error};
 use android_activity::input::{
-    ButtonState, InputEvent, KeyAction, Keycode, MotionAction, MotionEvent,
+    Axis, ButtonState, InputEvent, KeyAction, Keycode, MotionAction, MotionEvent,
 };
 use android_activity::{InputStatus, MainEvent, PollEvent};
 use i_slint_core::SharedString;
@@ -441,8 +441,33 @@ impl AndroidWindowAdapter {
                             }
                             InputStatus::Handled
                         }
-                        // Do not abort the process for an external mouse/trackpad.
-                        MotionAction::Scroll => InputStatus::Unhandled,
+                        MotionAction::Scroll => {
+                            let Some(pointer) = motion_event.pointers().next() else {
+                                return InputStatus::Unhandled;
+                            };
+                            // Match Slint's winit backend for wheel steps. Android's positive
+                            // horizontal axis scrolls right, moving the content left.
+                            const LOGICAL_PIXELS_PER_WHEEL_STEP: f32 = 60.0;
+                            let delta_x =
+                                -pointer.axis_value(Axis::Hscroll) * LOGICAL_PIXELS_PER_WHEEL_STEP;
+                            let delta_y =
+                                pointer.axis_value(Axis::Vscroll) * LOGICAL_PIXELS_PER_WHEEL_STEP;
+                            if delta_x == 0.0 && delta_y == 0.0 {
+                                return InputStatus::Unhandled;
+                            }
+
+                            let position =
+                                pointer_logical_position(pointer.x(), pointer.y(), offset, scale);
+                            let event = WindowEvent::PointerScrolled { position, delta_x, delta_y };
+                            match self.window.dispatch_event_with_result(event) {
+                                Ok(WindowEventDispatchResult::Accepted) => InputStatus::Handled,
+                                Ok(_) => InputStatus::Unhandled,
+                                Err(e) => {
+                                    result = Err(e);
+                                    InputStatus::Unhandled
+                                }
+                            }
+                        }
                         MotionAction::HoverEnter | MotionAction::HoverExit => {
                             InputStatus::Unhandled
                         }
