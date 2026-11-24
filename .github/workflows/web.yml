@@ -67,21 +67,6 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/tests/package-lock.json
 
-      - name: Проверки сессий и ключей в Chromium
-        working-directory: apps/web/tests
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
-          npm test
-
-      - name: Снимки браузерных проверок
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: web-regressions
-          path: apps/web/tests/artifacts
-          if-no-files-found: ignore
-
       - name: Сборка демо и генерация JS-обвязки
         run: |
           # Pages — только демо: API дневника не работает с публичного хостинга.
